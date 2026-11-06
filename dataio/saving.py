@@ -148,32 +148,69 @@ def saveOneNumor(  # noqa: N802 (legacy API)
     return
 
 
+_RSCF_COLUMNS = [
+    ("r", "distance (Å)"),
+    ("G", "G(r) = 4πρr[g(r) - 1], pair distribution function (Å^-2)"),
+    ("g", "g(r), pair correlation function (dimensionless)"),
+    ("RDF", "RDF(r) = 4πρr²g(r), radial distribution function (atoms/Å)"),
+    ("T", "T(r) = 4πρr·g(r), total correlation function (Å^-2)"),
+    ("N", "N(r) = ∫ RDF dr' from the first r, running coordination number (atoms)"),
+]
+
+
+def _rscf_column_header(with_errors: bool) -> list[str]:
+    """Header lines describing the columns written by `saveRSCF`."""
+    lines = ["Columns:"]
+    names: list[str] = []
+    col = 1
+    for i, (name, text) in enumerate(_RSCF_COLUMNS):
+        lines.append(f"  {col:2d}  {name:<6} {text}")
+        names.append(name)
+        col += 1
+        if with_errors and i > 0:
+            lines.append(f"  {col:2d}  d{name:<5} 1σ error of {name}(r), same units")
+            names.append("d" + name)
+            col += 1
+    if with_errors:
+        lines += [
+            "Errors: 1σ statistical, propagated exactly through the (linear) Fourier",
+            "  transform from the S(Q) error column, assuming uncorrelated S(Q) points.",
+            "  Values at different r are strongly correlated with each other.",
+            "  Systematic errors (normalisation, density, self-scattering,",
+            "  truncation) are not included.",
+        ]
+    lines.append(" ".join(f"{n:>12}" if k else f"{n:>7}" for k, n in enumerate(names)))
+    return lines
+
+
 def saveRSCF(  # noqa: N802 (legacy API)
     filename: str,
     fou: Sequence[Sequence[float]] | np.ndarray,
     heading: Sequence[str],
 ) -> None:
     """
-    Create a 6-column ASCII file from a Nx6 array `fou` (legacy behavior).
+    Write real-space correlation functions from `sineFT` to an ASCII file.
+
+    `fou` is either the (N, 6) array r, G, g, RDF, T, N, or the (N, 11) array
+    from `sineFT(..., with_errors=True)`, where each function is followed by
+    its 1σ error: r, G, dG, g, dg, RDF, dRDF, T, dT, N, dN. After the user
+    `heading`, a block describing every column is written.
     """
+    data = np.asarray(fou, dtype=np.float64)
+    if data.ndim != 2 or data.shape[1] not in (6, 11):
+        raise ValueError("saveRSCF: `fou` must have 6 or 11 columns.")
+    with_errors = data.shape[1] == 11
+
     with open(filename, "w") as datafile:
         datafile.write("# " + filename + "\n")
-        for i in range(len(heading)):
-            datafile.write("# " + heading[i] + "\n")
-        for i in range(len(fou)):
-            row: Any = fou[i]
+        for line in heading:
+            datafile.write("# " + line + "\n")
+        for line in _rscf_column_header(with_errors):
+            datafile.write("# " + line + "\n")
+        for row in data:
             datafile.write(
                 "{: 9.3f}".format(row[0])
-                + " "
-                + "{:12.6f}".format(row[1])
-                + " "
-                + "{:12.6f}".format(row[2])
-                + " "
-                + "{:12.6f}".format(row[3])
-                + " "
-                + "{:12.6f}".format(row[4])
-                + " "
-                + "{:12.6f}".format(row[5])
+                + "".join(" {:12.6f}".format(v) for v in row[1:])
                 + "\n"
             )
         print("File " + filename + " saved")

@@ -84,9 +84,10 @@ def sineFT(  # noqa: N802 (legacy API)
     constant: float = 1.0,
     selfsca: float = 1.0,
     window: int = 0,
+    with_errors: bool = False,
 ) -> NDArray[np.float64]:
     """
-    Sine Fourier transform of the structure factor S(Q) (columns Q, S).
+    Sine Fourier transform of the structure factor S(Q) (columns Q, S[, σS]).
 
     Returns an (N_r, 6) array with columns r, G(r), g(r), RDF(r), T(r), N(r):
 
@@ -105,9 +106,26 @@ def sineFT(  # noqa: N802 (legacy API)
     ∫ M dQ = qmax (M(0) ≈ 1.70), which inflated G(r) and coordination
     numbers and drove g(r) to ≈ -0.7 at low r. It has been removed. Values
     other than 0 and 1 now raise (legacy treated any non-zero as Lorch).
+
+    Error bars (`with_errors=True`)
+    -------------------------------
+    Requires a third column σS in `StrFactor`. Returns an (N_r, 11) array:
+
+        r, G, σG, g, σg, RDF, σRDF, T, σT, N, σN
+
+    The transform is linear in S(Q), so the 1σ statistical errors are
+    propagated exactly, assuming uncorrelated S(Q) points:
+        σG(r_j)² = Σ_k W_jk² σS_k²,  W_jk = 2/π·constant·Q_k M(Q_k) sin(Q_k r_j) w_k
+    (w_k: the Simpson weights used for G). Then σT = σG, σRDF = r·σG and
+    σg = σG/(4πρr) (0 at r <= 0). σN is propagated from S(Q) directly with
+    the same running Simpson rule as N(r), so the strong correlations between
+    neighbouring G(r) points are accounted for. Systematic errors (normalisation,
+    density, self-scattering, truncation) are not included.
     """
     if window not in (0, 1):
         raise ValueError("sineFT: window must be 0 (no window) or 1 (Lorch).")
+    if with_errors and StrFactor.shape[1] < 3:
+        raise ValueError("sineFT: with_errors=True needs a third column with σS(Q).")
     soq = StrFactor[:, 1]
     q = StrFactor[:, 0]
 
@@ -166,7 +184,98 @@ def sineFT(  # noqa: N802 (legacy API)
     fou = np.concatenate((fou, rdf_arr), axis=1)
     fou = np.concatenate((fou, tor_arr), axis=1)
     fou = np.concatenate((fou, run_arr), axis=1)
-    return fou
+    if not with_errors:
+        return fou
+
+    sig_g_func, sig_run = _sine_ft_errors(
+        np.asarray(q, dtype=np.float64),
+        np.asarray(StrFactor[:, 2], dtype=np.float64),
+        np.asarray(win, dtype=np.float64),
+        np.asarray(nr, dtype=np.float64),
+        constant,
+    )
+    r_col = fou[:, 0]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        sig_pdf = np.where(r_col > 0, sig_g_func / (4.0 * np.pi * density * r_col), 0.0)
+    return np.column_stack(
+        [
+            fou[:, 0],
+            fou[:, 1], sig_g_func,
+            fou[:, 2], sig_pdf,
+            fou[:, 3], r_col * sig_g_func,
+            fou[:, 4], sig_g_func,
+            fou[:, 5], sig_run,
+        ]
+    )
+
+
+def _simpson_weights(x: NDArray[np.float64], chunk: int = 512) -> NDArray[np.float64]:
+    """Weights w such that integrate.simpson(f, x=x) == Σ w·f (same rule)."""
+    n = len(x)
+    weights = np.empty(n, dtype=np.float64)
+    for start in range(0, n, chunk):
+        stop = min(start + chunk, n)
+        unit = np.zeros((stop - start, n), dtype=np.float64)
+        unit[np.arange(stop - start), np.arange(start, stop)] = 1.0
+        weights[start:stop] = integrate.simpson(unit, x=x, axis=1)
+    return weights
+
+
+def _sine_ft_errors(
+    q: NDArray[np.float64],
+    sig_s: NDArray[np.float64],
+    win: NDArray[np.float64],
+    nr: NDArray[np.float64],
+    constant: float,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """1σ errors of G(r) and of the running integral N(r) (see `sineFT`)."""
+    base = 2.0 / np.pi * constant * q * win * _simpson_weights(q)
+    var_s = sig_s**2
+    # G = W @ (S - selfsca),  W[j, k] = base_k sin(q_k r_j)
+    w_g = np.sin(np.outer(nr, q)) * base
+    sig_g = np.sqrt((w_g**2) @ var_s)
+    # N(r_i) = Σ_j C_ij r_j G_j + const  ->  linear in S through C·diag(r)·W,
+    # with C the exact running-Simpson matrix used for N(r) itself.
+    w_run = _running_simpson_matrix(nr) @ (nr[:, None] * w_g)
+    sig_run = np.sqrt((w_run**2) @ var_s)
+    return sig_g, sig_run
+
+
+def _running_simpson_matrix(x: NDArray[np.float64]) -> NDArray[np.float64]:
+    """
+    Matrix C with (C @ f)[i] == integrate.simpson(f[:i+1], x=x[:i+1]) (0 for i=0).
+
+    Built incrementally in O(N²): odd-length prefixes are composite Simpson
+    (one 3-point panel added at a time); an even-length prefix adds SciPy's
+    correction for the last interval, which depends only on the last 4 points.
+    The result is checked against SciPy and rebuilt the slow, direct way if a
+    SciPy version used a different rule.
+    """
+    n = len(x)
+    c = np.zeros((n, n), dtype=np.float64)
+    if n > 1:
+        c[1, :2] = integrate.simpson(np.eye(2), x=x[:2], axis=1)
+    odd = np.zeros(n, dtype=np.float64)
+    for m in range(3, n + 1):  # prefix length m -> row m - 1
+        if m % 2 == 1:
+            odd[m - 3 : m] += integrate.simpson(np.eye(3), x=x[m - 3 : m], axis=1)
+            c[m - 1, :m] = odd[:m]
+        else:
+            x4 = x[m - 4 : m]
+            delta = integrate.simpson(np.eye(4), x=x4, axis=1)
+            delta[:3] -= integrate.simpson(np.eye(3), x=x4[:3], axis=1)
+            c[m - 1, :m] = odd[:m]
+            c[m - 1, m - 4 : m] += delta
+
+    rows = sorted({i for i in (1, 2, 3, 4, n // 2, n - 2, n - 1) if 1 <= i < n})
+    if not all(
+        np.allclose(c[i, : i + 1], integrate.simpson(np.eye(i + 1), x=x[: i + 1], axis=1),
+                    rtol=1e-12, atol=1e-14)
+        for i in rows
+    ):
+        for i in range(1, n):
+            c[i, : i + 1] = integrate.simpson(np.eye(i + 1), x=x[: i + 1], axis=1)
+    return c
 
 
 def backFT(  # noqa: N802 (legacy API)
