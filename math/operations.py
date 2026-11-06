@@ -16,8 +16,8 @@ def binary_sum(
 
     Notes
     -----
-    This function intentionally preserves the legacy error propagation used in
-    `legacy/lib/toscana.py` for numerical parity. See `KNOWN__DIVERGENCES.md`.
+    Diverges from `legacy/lib/toscana.py`: the legacy error propagation used
+    e instead of e^2 for the variances; this is now corrected.
 
     Parameters
     ----------
@@ -42,7 +42,9 @@ def binary_sum(
 
     data3 = np.copy(data1)
     data3[:, 1] = w1 * data1[:, 1] + w2 * data2[:, 1]
-    data3[:, 2] = np.sqrt(w1**2 * data1[:, 2] + w2**2 * data2[:, 2])
+    # Bug fix vs legacy: the variances are e^2 (legacy used e, which is
+    # dimensionally wrong and gave sqrt(8)->2 for e1 = e2 = 2).
+    data3[:, 2] = np.sqrt(w1**2 * data1[:, 2] ** 2 + w2**2 * data2[:, 2] ** 2)
     return data3
 
 

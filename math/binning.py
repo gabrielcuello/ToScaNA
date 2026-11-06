@@ -25,7 +25,10 @@ def get_xlim(
     """
     xini = xmin - dbin / 2.0
     xfin = xmax + dbin / 2.0
-    nb = int((xfin - xini) / dbin)
+    # Bug fix vs legacy: int() of a float ratio such as 3.9999999 dropped the
+    # last bin (get_xlim(0, 0.3, 0.1) gave 3 bins instead of 4). A small
+    # tolerance keeps floor semantics for genuinely non-commensurate ranges.
+    nb = int(np.floor((xfin - xini) / dbin + 1e-9))
 
     x_lim = [xmin - dbin / 2.0 + i * dbin for i in range(nb + 1)]
     x_bin = [xmin + i * dbin for i in range(nb)]
@@ -46,8 +49,11 @@ def get_bins(
     x1 = x - xdel / 2.0
     x2 = x + xdel / 2.0
 
-    b1 = int((x1 - x_lim[0]) / dbin)
-    b2 = int((x2 - x_lim[0]) / dbin)
+    # Bug fix vs legacy: floor instead of truncation toward zero, so a point
+    # starting just below the first bin edge gives b1 = -1 (and is rejected
+    # below) instead of being counted as fully inside bin 0.
+    b1 = int(np.floor((x1 - x_lim[0]) / dbin))
+    b2 = int(np.floor((x2 - x_lim[0]) / dbin))
     if b1 < 0 or b2 >= len(x_lim):
         return bins, frac
 
@@ -90,7 +96,8 @@ def rebin(  # noqa: N802 (legacy API)
 
     Notes
     -----
-    Parity-first copy of `legacy/lib/toscana.py::rebin`.
+    Derived from `legacy/lib/toscana.py::rebin`, with bug fixes for the bin
+    count, bin indexing and error combination (see inline comments).
     """
     x_dat = data[:, 0]
     y_dat = data[:, 1]
@@ -114,7 +121,7 @@ def rebin(  # noqa: N802 (legacy API)
                 bins, frac = get_bins(float(x_dat[i]), xdel, x_lim)
                 for j in range(len(bins)):
                     y_bin[bins[j]] += frac[j] * float(y_dat[i])
-                    e_bin[bins[j]] += frac[j] * float(e_dat[i])
+                    e_bin[bins[j]] += (frac[j] * float(e_dat[i])) ** 2
                     f_bin[bins[j]] += frac[j]
     else:
         for i in range(len(x_dat)):
@@ -129,13 +136,16 @@ def rebin(  # noqa: N802 (legacy API)
                 bins, frac = get_bins(float(x_dat[i]), float(qdel), x_lim)
                 for j in range(len(bins)):
                     y_bin[bins[j]] += frac[j] * float(y_dat[i])
-                    e_bin[bins[j]] += frac[j] * float(e_dat[i])
+                    e_bin[bins[j]] += (frac[j] * float(e_dat[i])) ** 2
                     f_bin[bins[j]] += frac[j]
 
+    # Bug fix vs legacy: errors are combined as sqrt(sum(f^2 e^2)) / sum(f)
+    # (error of a weighted mean). Legacy used sum(f e) / sum(f), i.e. averaged
+    # the errors, which does not decrease when points are combined.
     for i in range(nbins + 1):
         if f_bin[i] != 0:
             y_bin[i] /= f_bin[i]
-            e_bin[i] /= f_bin[i]
+            e_bin[i] = float(np.sqrt(e_bin[i])) / f_bin[i]
 
     x_bin_arr: NDArray[np.float64] = np.array(x_bin, dtype=np.float64)
     y_bin_arr: NDArray[np.float64] = np.array(y_bin[0:-1], dtype=np.float64)

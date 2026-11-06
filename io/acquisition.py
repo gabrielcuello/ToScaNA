@@ -323,15 +323,25 @@ def getOneNumor(  # noqa: N802 (legacy API)
     with d4creg_log_path().open("a", encoding="utf-8") as file:
         file.write("Dead-time corrections\n")
 
+    # Bug fix vs legacy: Poisson errors are taken on the RAW counts and then
+    # scaled by the same correction factors as the counts (legacy took
+    # sqrt of the already dead-time and efficiency corrected counts).
+    counts = counts.astype(np.float64, copy=False)
+    errors = getErrorsNumor(counts)
+
     head["MonitorCnts"] = getDTC_mcounts(
         float(head["MonitorCnts"]), float(head["CntTime (sec)"]), dead_time=dtm
     )
-    counts, head["TotalCnts"] = getDTC_dcounts(
-        counts.astype(np.float64, copy=False),
+    counts_dt, head["TotalCnts"] = getDTC_dcounts(
+        counts,
         float(head["TotalCnts"]),
         float(head["CntTime (sec)"]),
         dead_time=dtd,
     )
+    with np.errstate(divide="ignore", invalid="ignore"):
+        dt_factor = np.where(counts > 0, counts_dt / counts, 1.0)
+    errors = errors * dt_factor
+    counts = counts_dt
 
     printRates(
         "monitor",
@@ -350,7 +360,7 @@ def getOneNumor(  # noqa: N802 (legacy API)
         filename=efffile, ndet=int(head["ndet"]), ncells=int(head["ncell"])
     )
     counts = counts / efficiency
-    errors = getErrorsNumor(counts.astype(np.float64, copy=False))
+    errors = errors / efficiency
 
     normal = getNormalFactors(float(head["MonitorCnts"]), float(head["CntTime (sec)"]))
     counts, errors = normalise(

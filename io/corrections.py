@@ -43,27 +43,36 @@ def getDTC_dcounts(  # noqa: N802 (legacy API)
     dead_time: float = 7e-6,
 ) -> tuple[NDArray[np.float64], float]:
     """
-    Calculate the dead-time corrected detector counts (legacy behavior).
+    Calculate the dead-time corrected detector counts (non-paralysable model, per cell).
+
+    Notes
+    -----
+    Divergences from legacy (bug fixes):
+    - Legacy tested `(correction.all()) > 0`, which only checks that no factor is
+      exactly zero; negative factors (rate * tau > 1) were silently accepted and
+      produced negative counts. All factors are now required to be positive.
+    - Legacy corrected `total_counts` with the factor of cell [0, 0] only. The
+      total is now scaled by sum(corrected) / sum(raw), consistent with the
+      per-cell correction.
     """
     if time <= 0:
         time = 1e-6
     nu_meas = counts / time
     correction = 1.0 - nu_meas * dead_time
 
-    # NOTE: legacy uses `(correction.all()) > 0`, which does not actually test positivity.
-    if (correction.all()) > 0:  # noqa: PLR2004 (parity with legacy)
+    if np.all(correction > 0):
         factor = 1.0 / correction
-        nu = nu_meas * factor
+        corrected = (nu_meas * factor * time).astype(np.float64, copy=False)
+        raw_sum = float(np.sum(counts))
+        total_factor = float(np.sum(corrected)) / raw_sum if raw_sum > 0 else 1.0
         with d4creg_log_path().open("a", encoding="utf-8") as file:
             file.write(
-                "  Monitor DT = {:4.2e} s. Correction factor = {:10.6f}".format(
-                    dead_time, float(factor[0][0])
+                "  Detector DT = {:4.2e} s. Correction factor = {:10.6f}".format(
+                    dead_time, total_factor
                 )
-                + " (1st detector cell)\n"
+                + " (overall), max = {:10.6f}\n".format(float(np.max(factor)))
             )
-        return (nu * time).astype(np.float64, copy=False), float(
-            total_counts * float(factor[0][0])
-        )
+        return corrected, float(total_counts * total_factor)
 
     with d4creg_log_path().open("a", encoding="utf-8") as file:
         file.write("--- ERROR in Function getDTC_dcounts: correction factor < 0 \n")
@@ -87,7 +96,9 @@ def getEff(  # noqa: N802 (legacy API)
     for line in lines:
         if "#" in line:
             continue
-        row = (line.strip(" "))[0:-1]
+        # Bug fix vs legacy: `[0:-1]` dropped the last character of a final line
+        # without a trailing newline (e.g. 1.0234 -> 1.023).
+        row = line.strip()
         if len(row) == 0:
             continue
         col = row.split()
@@ -118,7 +129,7 @@ def getDec(filename: str = "dec.dec", ndet: int = 9) -> NDArray[np.float64]:  # 
     for line in lines:
         if "#" in line:
             continue
-        row = (line.strip(" "))[0:-1]
+        row = line.strip()  # bug fix vs legacy: see getEff
         if len(row) == 0:
             continue
         columns = row.split()
@@ -128,9 +139,11 @@ def getDec(filename: str = "dec.dec", ndet: int = 9) -> NDArray[np.float64]:  # 
 
 def getErrorsNumor(counts: NDArray[np.float64]) -> NDArray[np.float64]:  # noqa: N802 (legacy API)
     """
-    Calculate Poisson errors for detector counts (legacy behavior).
+    Calculate Poisson errors for detector counts.
+
+    Must be called on RAW counts; the errors are then scaled by the same factors
+    as the counts (see `getOneNumor`).
     """
-    errors = np.zeros((counts.shape[0], counts.shape[1]), dtype=np.float64)
     errors = np.sqrt(counts)
     return errors.astype(np.float64, copy=False)
 
@@ -156,18 +169,29 @@ def normalise(  # noqa: N802 (legacy API)
     norm_mon: float = 1_000_000,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
-    Normalise counts and errors by monitor counts or counting time (legacy behavior).
+    Normalise counts and errors by monitor counts or counting time.
+
+    Notes
+    -----
+    Bug fix vs legacy: legacy formed `errors / counts` AFTER `counts` had been
+    normalised while `errors` had not, so the relative error was multiplied by
+    monitor/norm_mon. The variance is now propagated as
+        var_n = (f * e)^2 + (y_n * sigma_N / N)^2,   f = norm / N,  y_n = f * y.
+    Cells with zero counts are flagged NaN (excluded downstream), which is the
+    effective legacy behaviour (legacy produced NaN errors via 0/0).
     """
     norm = [norm_mon, norm_time]
     ntype = 0
     if norm_type == "time":
         ntype = 1
-    counts = (norm[ntype] * counts / normal[ntype][0]).astype(np.float64, copy=False)
-    relative_error = np.sqrt(
-        (errors / counts) ** 2 + (normal[ntype][1] / normal[ntype][0]) ** 2
-    )
-    errors = (counts * relative_error).astype(np.float64, copy=False)
-    return counts, errors
+    factor = norm[ntype] / normal[ntype][0]
+    rel_norm = normal[ntype][1] / normal[ntype][0]
+    counts_n = factor * counts
+    errors_n = np.sqrt((factor * errors) ** 2 + (counts_n * rel_norm) ** 2)
+    zero = counts == 0
+    counts_n = np.where(zero, np.nan, counts_n).astype(np.float64, copy=False)
+    errors_n = np.where(zero, np.nan, errors_n).astype(np.float64, copy=False)
+    return counts_n, errors_n
 
 
 def getAngles(  # noqa: N802 (legacy API)

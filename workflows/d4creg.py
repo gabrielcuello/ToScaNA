@@ -81,13 +81,25 @@ def d4creg(runInfo: dict[str, Any] | Mapping[str, Any]) -> None:  # noqa: N802 (
         for j in range(1, 3):
             dataQ[i, j] = diffA[0, j, i]
 
-    diffQbin = rebin(0.125, float(runInfo["wavelength"]), dataQ, qmin, qmax, qstep)
+    # Bug fix vs legacy: the angular width of each regrouped point is the actual
+    # step of the regrouped grid (getDiffA may enlarge the requested step to the
+    # cell width), not a hard-coded 0.125 deg.
+    if diffA.shape[2] > 1:
+        angular_width = float(diffA[0, 0, 1] - diffA[0, 0, 0])
+    else:
+        angular_width = float(runInfo["angular_scale"][2])
+    diffQbin = rebin(
+        angular_width, float(runInfo["wavelength"]), dataQ, qmin, qmax, qstep
+    )
 
     for i in range(len(diffQbin)):
         if diffQbin[i, 1] <= 0.0:
             for j in range(3):
                 diffQbin[i, j] = np.nan
-                diffQbin[i - 1, j] = np.nan
+                # Bug fix vs legacy: at i = 0, `i - 1` is -1 and wiped the
+                # LAST Q point.
+                if i > 0:
+                    diffQbin[i - 1, j] = np.nan
 
     saveDiffQ(diffQbin, head, runInfo)
 

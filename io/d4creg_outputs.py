@@ -14,9 +14,10 @@ def getDiffA(  # noqa: N802 (legacy API)
     runInfo: Mapping[str, Any],
 ) -> np.ndarray:
     """
-    Create diffractograms in angular scale (legacy behavior).
+    Create diffractograms in angular scale.
 
-    Parity-first copy of `legacy/lib/toscana.py::getDiffA`.
+    Derived from `legacy/lib/toscana.py::getDiffA`, with bug fixes for the grid
+    size, out-of-range bin indices and error combination (see inline comments).
     """
     ndet = head[0]["ndet"]  # Number of detectors
     ncell = head[0]["ncell"]  # Number of cells in one detector
@@ -35,15 +36,18 @@ def getDiffA(  # noqa: N802 (legacy API)
         )
         angstep = angular_step
 
-    # Number of angles in the angular binning
-    nangles = int((angmax - angmin) / angstep)
+    # Bug fix vs legacy: the number of angles is taken from the grid itself.
+    # Legacy used int(range/step) while np.arange yields ceil(range/step)
+    # points, which crashed for any step not dividing the range.
+    angle_grid = np.arange(angmin, angmax, angstep)
+    nangles = len(angle_grid)
 
     # Defining the matrix that will contain the 10 diffractograms
     diff = np.zeros((10, 5, nangles))
 
     # The angular scale is the same for all diffractograms
     for i in range(ndet + 1):
-        diff[i, 0, :] = np.arange(angmin, angmax, angstep)
+        diff[i, 0, :] = angle_grid
 
     # The Q-scale is the same for all diffractograms
     for i in range(ndet + 1):
@@ -66,38 +70,43 @@ def getDiffA(  # noqa: N802 (legacy API)
         cell = numor[num, 4, :]
         mon = head[num]["MonitorCnts"] / 1000000 / totalmon
         for ang in range(nbrData):
+            if np.isnan(count[ang]) or np.isnan(error[ang]):
+                continue
             angle1 = angle[ang] - angular_step / 2.0
             ang1 = (angle1 - angmin) / angstep
-            a1 = int(ang1)
             angle2 = angle[ang] + angular_step / 2.0
             ang2 = (angle2 - angmin) / angstep
-            a2 = int(ang2)
-            frac1 = 1.0 - (ang1 - int(ang1))
-            frac2 = ang1 - int(ang1)
-            if (not np.isnan(count[ang])) and (not np.isnan(error[ang])):
-                diff[0, 1, a1] += frac1 * count[ang] * mon
-                diff[0, 1, a2] += frac2 * count[ang] * mon
-                diff[0, 2, a1] += frac1 * error[ang] * mon
-                diff[0, 2, a2] += frac2 * error[ang] * mon
-                diff[0, 3, a1] += frac1 * mon
-                diff[0, 3, a2] += frac2 * mon
-                det = int(cell[ang] / 1000)
-                diff[det, 1, a1] += frac1 * count[ang] * mon
-                diff[det, 1, a2] += frac2 * count[ang] * mon
-                diff[det, 2, a1] += frac1 * error[ang] * mon
-                diff[det, 2, a2] += frac2 * error[ang] * mon
-                diff[det, 3, a1] += frac1 * mon
-                diff[det, 3, a2] += frac2 * mon
+            # Bug fix vs legacy: floor (not truncation toward zero) and bounds
+            # checks. Legacy used int(), so cells below angmin landed in bin 0
+            # or, via negative indices, at the END of the grid; cells beyond
+            # angmax raised IndexError. Out-of-range parts are now discarded.
+            a1 = int(np.floor(ang1))
+            a2 = int(np.floor(ang2))
+            frac1 = 1.0 - (ang1 - a1)
+            frac2 = ang1 - a1
+            det = int(cell[ang] / 1000)
+            for a, frac in ((a1, frac1), (a2, frac2)):
+                if frac <= 0.0 or a < 0 or a >= nangles:
+                    continue
+                w = frac * mon
+                for d in (0, det):
+                    diff[d, 1, a] += w * count[ang]
+                    # Bug fix vs legacy: accumulate variances (w^2 e^2), not
+                    # w*e; legacy averaged the errors, so they did not
+                    # decrease when several cells/numors were combined.
+                    diff[d, 2, a] += (w * error[ang]) ** 2
+                    diff[d, 3, a] += w
 
-    # Normalisation by the weighting factor of each bin
+    # Normalisation by the weighting factor of each bin:
+    #   y = sum(w y_i) / sum(w),   e = sqrt(sum(w^2 e_i^2)) / sum(w)
     for det in range(10):
         for i in range(len(diff[0, 1, :])):
             if (not np.isnan(diff[0, 1, i])) and (diff[det, 3, i] > 0):
                 diff[det, 1, i] = diff[det, 1, i] / diff[det, 3, i]
-                diff[det, 2, i] = diff[det, 2, i] / diff[det, 3, i]
+                diff[det, 2, i] = np.sqrt(diff[det, 2, i]) / diff[det, 3, i]
             else:
-                diff[det, 1, i] = "NaN"
-                diff[det, 2, i] = "NaN"
+                diff[det, 1, i] = np.nan
+                diff[det, 2, i] = np.nan
 
     return diff
 

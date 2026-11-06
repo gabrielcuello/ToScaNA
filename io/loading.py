@@ -24,7 +24,9 @@ def read_xye(
 
         for dataline in data.readlines():
             if "#" not in dataline:
-                row = dataline.strip(" ")[:-1]
+                # Bug fix vs legacy: `[:-1]` dropped the last character of a
+                # final line without a trailing newline.
+                row = dataline.strip()
                 if len(row) > 0:
                     columns = row.split()
                     x.append(float(columns[0]))

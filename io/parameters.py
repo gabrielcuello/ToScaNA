@@ -76,8 +76,12 @@ def readParam(parametersFile: str) -> dict[str, object]:  # noqa: N802 (legacy A
             continue
         if len(raw) == 1:
             continue
-        if (raw[0] == "<") and (raw[4] == ">"):
-            parts = raw.split(" ")
+        if (raw[0] == "<") and (len(raw) > 4) and (raw[4] == ">"):
+            # Bug fix vs legacy: `raw.split(" ")` kept the trailing newline on
+            # the last token ("Nexus\n", "True\n", "387229-387288\n") and
+            # produced empty tokens for repeated spaces. Inline '#' comments are
+            # stripped and the line is split on any whitespace.
+            parts = raw.split("#")[0].split()
             tag = parts[0]
 
             if tag == "<tol>":
