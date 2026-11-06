@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import warnings
 from typing import Any, Callable, Dict, List
 
 import numpy as np
@@ -60,7 +61,7 @@ def dummyOk(key: str, value: Any) -> None:
     return
 
 
-def getFree(isot: Elemento, key: complex) -> complex:
+def getFree(isot: Element, key: complex) -> complex:
     s = complex(
         round(math.pow((isot.A / (isot.A + 1)), 2) * key.real, 4),
         round(math.pow((isot.A / (isot.A + 1)), 2) * key.imag, 4),
@@ -89,7 +90,7 @@ myCorr: Dict[str, List[Validator]] = {
 }
 
 
-class Elemento:
+class Element:
     """
     Class that stores nuclear values for an isotope or element.
 
@@ -129,7 +130,7 @@ class Elemento:
 
     def __init__(self, iso_name: str, table: int = 0, **kwargs: Any):
         """
-        Initialize an Elemento object.
+        Initialize an Element object.
 
         Parameters
         ----------
@@ -272,7 +273,7 @@ class Elemento:
             symbol = self.data["symbol"]
             for key in ISOTOPE_DICT:
                 if ISOTOPE_DICT[key][0] == symbol:
-                    iso_obj = Elemento(key)
+                    iso_obj = Element(key)
                     print("\n")
                     print("{:<15}".format(key.upper()))
                     print("\n")
@@ -304,8 +305,20 @@ class Elemento:
         return lista
 
     def __repr__(self) -> str:
-        return f"Elemento('{self.symbol}', iso='{self.iso}', name='{self.name}')"
+        return f"Element('{self.symbol}', iso='{self.iso}', name='{self.name}')"
 
 
-# Alias for legacy compatibility
-elemento = Elemento
+# Deprecated Spanish names, kept so existing notebooks keep working.
+_DEPRECATED_ALIASES = {"Elemento": "Element", "elemento": "Element"}
+
+
+def __getattr__(name: str) -> Any:
+    if name in _DEPRECATED_ALIASES:
+        new = _DEPRECATED_ALIASES[name]
+        warnings.warn(
+            f"`{name}` is deprecated; use `{new}` instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return globals()[new]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

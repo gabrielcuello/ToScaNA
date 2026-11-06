@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from toscana.io.loading import read_3col
-from toscana.isotopes.core import elemento
+from toscana.isotopes.core import Element
 from toscana.physics.properties import getAbsXS, getAtomicDensity
 
 if TYPE_CHECKING:
@@ -164,7 +164,7 @@ class Measurement:
 
         self.nuclei: dict[str, tuple[object, ...]] = {}
         for symbol in list(atoms.keys()):
-            iso = elemento(symbol)
+            iso = Element(symbol)
             self.nuclei[symbol] = (
                 symbol,
                 atoms[symbol],
@@ -186,7 +186,7 @@ class Measurement:
         self.ssca = 0.0
         self.sabs = 0.0
         for symbol in list(atoms.keys()):
-            iso = elemento(symbol)
+            iso = Element(symbol)
             self.molarMass += iso.weight * conc[symbol]
             bcoh_acc += iso.bcoh * conc[symbol]
             binc_acc += iso.binc * conc[symbol]
@@ -198,7 +198,7 @@ class Measurement:
         self.bcoh = float(cmath.polar(bcoh_acc)[0])
         self.binc = float(cmath.polar(binc_acc)[0])
         self.free = (
-            self.ssca * (self.molarMass / (self.molarMass + elemento("n1").weight)) ** 2
+            self.ssca * (self.molarMass / (self.molarMass + Element("n1").weight)) ** 2
         )
         self.b2lowQ = self.ssca / 4 / np.pi
         self.b2highQ = self.free / 4 / np.pi

@@ -15,24 +15,38 @@ from helpers import in_tempdir, quiet
 
 import numpy as np
 
-from toscana.isotopes.core import Elemento
+from toscana.isotopes.core import Element
 
 _ = helpers
 
 
 class TestIsotopes(unittest.TestCase):
     def test_bound_cross_sections_in_barns(self) -> None:
-        ni = Elemento("Ni")
+        ni = Element("Ni")
         self.assertAlmostEqual(ni.scoh_bound.real, 4 * np.pi * 10.3**2 / 100, places=3)
         self.assertAlmostEqual(ni.scoh_bound.real / ni.sig_coh, 1.0, delta=0.01)
 
+    def test_deprecated_spanish_names(self) -> None:
+        import warnings
+
+        import toscana.isotopes as isotopes
+        import toscana.isotopes.core as core
+
+        for module, name in ((core, "Elemento"), (core, "elemento"), (isotopes, "Elemento")):
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                self.assertIs(getattr(module, name), Element)
+            self.assertTrue(any(issubclass(w.category, DeprecationWarning) for w in caught))
+        with self.assertRaises(AttributeError):
+            _ = core.NotAThing  # type: ignore[attr-defined]
+
     def test_unknown_isotope_raises(self) -> None:
         with self.assertRaises(ValueError):
-            Elemento("Xx99")
+            Element("Xx99")
 
     def test_vanadium_b_consistent_with_sigma(self) -> None:
         """C16: V uses b_coh = -0.443 fm; σ_coh and σ_sca follow from it."""
-        v = Elemento("V")
+        v = Element("V")
         self.assertEqual(v.re_bcoh, -0.443)
         self.assertAlmostEqual(4 * np.pi * v.re_bcoh**2 / 100 / v.sig_coh, 1.0, delta=1e-3)
         self.assertAlmostEqual(v.sig_sca, v.sig_coh + v.sig_inc, places=10)
@@ -41,7 +55,7 @@ class TestIsotopes(unittest.TestCase):
         from toscana.experiment.info import setVanaInfo
 
         vana = quiet(setVanaInfo)
-        v = Elemento("V")
+        v = Element("V")
         self.assertEqual(vana["CohSL"], v.re_bcoh)
         self.assertEqual(vana["CohXS"], v.sig_coh)
         self.assertEqual(vana["ScaXS"], v.sig_sca)
