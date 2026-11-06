@@ -1,21 +1,33 @@
+"""
+Window (modification) functions for the sine Fourier transform.
+
+Only the standard Lorch function is provided:
+
+    M(Q) = sin(πQ/Qmax) / (πQ/Qmax)   for 0 <= Q < Qmax,  0 otherwise,
+
+with M(0) = 1. In r-space it replaces G(r) by its running average over
+[r - Δ, r + Δ], Δ = π/Qmax, which conserves the area of G(r) and hence
+coordination numbers integrated between flat regions (e.g. from the g(r) = 0
+region to a minimum).
+
+Legacy also had a "normalised" Lorch (`LorchN`), rescaled so that
+∫_0^Qmax M dQ = Qmax, i.e. M(0) = π/Si(π) ≈ 1.70. It inflated all real-space
+integrals by that factor (g(r) ≈ -0.7 at low r) and has been removed.
+"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy import integrate  # type: ignore[import-untyped]
 
 if TYPE_CHECKING:
-    from numpy.typing import NDArray
+    from numpy.typing import ArrayLike, NDArray
 
 
 def Lorch(q: float, qmax: float = 23.5) -> float:  # noqa: N802 (legacy API)
     """
-    Evaluate the Lorch window function (legacy behavior).
-
-    Notes
-    -----
-    This is the scalar version used by legacy `sineFT`.
+    Evaluate the standard Lorch window at one point (M(0) = 1).
     """
     if qmax <= 0:
         # Bug fix vs legacy: legacy printed an error and returned -999, which
@@ -31,24 +43,15 @@ def Lorch(q: float, qmax: float = 23.5) -> float:  # noqa: N802 (legacy API)
     return float(np.sin(a) / a)
 
 
-def LorchN(Q: NDArray[np.float64], Qmax: float = 0) -> NDArray[np.float64]:  # noqa: N802 (legacy API)
+def LorchArray(q: ArrayLike, qmax: float) -> NDArray[np.float64]:  # noqa: N802
     """
-    Evaluate the normalised Lorch function over an array (legacy behavior).
+    Evaluate the standard Lorch window over an array (M(0) = 1).
+
+    Same values as `Lorch`, vectorised: 0 outside 0 <= Q < qmax.
     """
-    if (Qmax <= 0) or (Qmax > Q[-1]):
-        Qmax = float(Q[-1])
-
-    lorch: NDArray[np.float64] = np.ones(len(Q), dtype=np.float64)
-    for i in range(len(Q)):
-        if (Q[i] < 0.0) or (Q[i] >= Qmax):
-            lorch[i] = 0.0
-        elif Q[i] != 0.0:
-            a = float(Q[i]) * np.pi / Qmax
-            lorch[i] = float(np.sin(a) / a)
-        else:
-            lorch[i] = 1.0
-
-    integral_lorch = integrate.simpson(lorch, Q)
-    for i in range(len(Q)):
-        lorch[i] *= Qmax / float(integral_lorch)
-    return lorch
+    if qmax <= 0:
+        raise ValueError("Non positive value for qmax in Lorch function.")
+    qa = np.asarray(q, dtype=np.float64)
+    inside = (qa >= 0.0) & (qa < qmax)
+    # np.sinc(x) = sin(πx)/(πx), with sinc(0) = 1
+    return np.where(inside, np.sinc(qa / qmax), 0.0).astype(np.float64)

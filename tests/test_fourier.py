@@ -12,14 +12,15 @@ from scipy import integrate, special
 
 from toscana.math.fourier import backFT, getSineFT, getSineIntegral, sineFT
 from toscana.math.line_shapes import step
-from toscana.math.windows import Lorch, LorchN
+from toscana.math.windows import Lorch, LorchArray
 
 RHO = 0.1
 SQ, R_TRUE, G_TRUE = synthetic_liquid(RHO)
 
 
 def _true_coordination(r_lo: float, r_hi: float) -> float:
-    m = (R_TRUE >= r_lo) & (R_TRUE <= r_hi)
+    r = np.round(R_TRUE, 10)  # so the limits fall exactly on grid points
+    m = (r >= r_lo) & (r <= r_hi)
     return float(integrate.simpson(4 * np.pi * RHO * R_TRUE[m] ** 2 * G_TRUE[m], x=R_TRUE[m]))
 
 
@@ -62,12 +63,37 @@ class TestSineFT(unittest.TestCase):
                 fou[i, 5], float(integrate.simpson(fou[: i + 1, 3], x=nr[: i + 1])), places=10
             )
 
-    @unittest.expectedFailure
-    def test_lorch_low_r_limit_pending_C1(self) -> None:
-        """C1 (pending decision): with the Lorch window g(r) should also -> 0 at low r."""
+    def test_lorch_low_r_limit(self) -> None:
+        """C1: with the standard Lorch window g(r) -> 0 at low r as well."""
         fou = sineFT(SQ, self.nr, qmax=25.0, density=RHO, window=1)
         low = (self.nr > 0.5) & (self.nr < 1.5)
-        self.assertLess(abs(float(fou[low, 2].mean())), 0.05)
+        self.assertLess(abs(float(fou[low, 2].mean())), 0.02)
+
+    def test_invalid_window_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            sineFT(SQ, self.nr, qmax=25.0, density=RHO, window=2)
+
+
+class TestCoordinationNumbers(unittest.TestCase):
+    """The standard Lorch window conserves coordination numbers integrated
+    between flat regions of g(r) (here: from g = 0 to beyond the first shell)."""
+
+    nr = np.round(np.arange(0, 6, 0.01), 10)  # limits fall exactly on grid points
+
+    def _n(self, fou: np.ndarray, a: float, b: float) -> float:
+        m = (self.nr >= a) & (self.nr <= b)
+        return float(integrate.simpson(fou[m, 3], x=self.nr[m]))
+
+    def test_lorch_conserves_coordination_number(self) -> None:
+        for qmax in (15.0, 23.5):
+            none = sineFT(SQ, self.nr, qmax=qmax, density=RHO, window=0)
+            lorch = sineFT(SQ, self.nr, qmax=qmax, density=RHO, window=1)
+            for a, b in ((0.0, 3.3), (2.3, 3.3)):
+                true = _true_coordination(a, b)
+                n_none, n_lorch = self._n(none, a, b), self._n(lorch, a, b)
+                msg = f"qmax={qmax}, {a}-{b}: none={n_none:.4f} lorch={n_lorch:.4f} true={true:.4f}"
+                self.assertAlmostEqual(n_lorch / true, 1.0, delta=0.005, msg=msg)
+                self.assertAlmostEqual(n_lorch / n_none, 1.0, delta=0.005, msg=msg)
 
 
 class TestBackFT(unittest.TestCase):
@@ -141,10 +167,26 @@ class TestSineHelpers(unittest.TestCase):
         self.assertAlmostEqual(Lorch(5.0, 10.0), 2 / np.pi)
         self.assertEqual(Lorch(10.0, 10.0), 0.0)
 
-    @unittest.expectedFailure
-    def test_lorch_n_unit_at_zero_pending_C1(self) -> None:
-        """C1 (pending decision): standard Lorch has M(0) = 1."""
-        self.assertAlmostEqual(float(LorchN(np.arange(0, 23.5, 0.02), 23.5)[0]), 1.0)
+    def test_lorch_array_is_standard_lorch(self) -> None:
+        """C1: standard Lorch, M(0) = 1, identical to the scalar version."""
+        q = np.arange(-1.0, 30.0, 0.01)
+        arr = LorchArray(q, 23.5)
+        self.assertEqual(float(LorchArray([0.0], 23.5)[0]), 1.0)
+        np.testing.assert_allclose(arr, [Lorch(float(x), 23.5) for x in q], atol=1e-15)
+
+    def test_get_sine_ft_lorch(self) -> None:
+        v = np.arange(0, 20, 0.01)
+        y = 1 + np.exp(-v) * np.sin(3 * v)
+        u = np.linspace(0.5, 5, 7)
+        win = LorchArray(v, 15.0)
+        keep = v <= 15.0
+        expected = [
+            2 / np.pi * integrate.simpson(((y - 1) * v * np.sin(v * uu) * win)[keep], x=v[keep])
+            for uu in u
+        ]
+        np.testing.assert_allclose(getSineFT(v, y, u, vmax=15.0, w=1), expected, rtol=1e-12)
+        with self.assertRaises(ValueError):
+            getSineFT(v, y, u, w=2)
 
 
 if __name__ == "__main__":

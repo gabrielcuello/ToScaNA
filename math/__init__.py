@@ -23,7 +23,7 @@ from .operations import binary_sum, ratio, wsum2
 from .peak_finding import find_minimum_within_range, find_peaks_in_range
 from .polynomials import polyQ1, polyQ2, polyQ4
 from .signal_processing import smooth_curve
-from .windows import Lorch, LorchN
+from .windows import Lorch, LorchArray
 
 __all__ = [
     "backFT",
@@ -35,7 +35,7 @@ __all__ = [
     "getSineIntegral",
     "get_xlim",
     "Lorch",
-    "LorchN",
+    "LorchArray",
     "find_minimum_within_range",
     "find_peaks_in_range",
     "Gaussian",

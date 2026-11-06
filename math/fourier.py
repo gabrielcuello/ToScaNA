@@ -6,7 +6,7 @@ import numpy as np
 from scipy import integrate, special  # type: ignore[import-untyped]
 
 from .line_shapes import step
-from .windows import Lorch, LorchN
+from .windows import Lorch, LorchArray
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -37,14 +37,19 @@ def getSineFT(  # noqa: N802 (legacy API)
     """
     Calculate a sine Fourier transform:
 
-        stf(u) = 2/π · c · ∫ (y(v) - s) · v · sin(v·u) · W(v) dv
+        stf(u) = 2/π · c · ∫_0^vmax (y(v) - s) · v · sin(v·u) · W(v) dv
+
+    `w` selects the window W: 0 = none (truncation at vmax),
+    1 = standard Lorch with W(0) = 1 (see `toscana.math.windows`).
 
     Notes
     -----
-    Bug fix vs legacy: with `w=0` (no window) legacy ignored `vmax` and always
-    integrated over the full range. The integral now stops at `vmax`; with the
-    default `vmax` (full range) results are unchanged.
+    Divergences from legacy: with `w=0` legacy ignored `vmax` and always
+    integrated over the full range; with `w=1` it used the normalised Lorch
+    (W(0) ≈ 1.70), which has been removed. Other values of `w` raise.
     """
+    if w not in (0, 1):
+        raise ValueError("getSineFT: w must be 0 (no window) or 1 (Lorch).")
     nbr_v = len(vvec)
     nbr_y = len(yvec)
     if nbr_v != nbr_y:
@@ -57,12 +62,12 @@ def getSineFT(  # noqa: N802 (legacy API)
 
     vv = np.asarray(vvec, dtype=np.float64)
     yy = np.asarray(yvec, dtype=np.float64)
-    win: NDArray[np.float64] = np.ones(nbr_v, dtype=np.float64)
+    keep = vv <= vmax
+    vv, yy = vv[keep], yy[keep]
     if w == 1:
-        win = LorchN(vv, vmax)
+        win = LorchArray(vv, vmax)
     else:
-        keep = vv <= vmax
-        vv, yy, win = vv[keep], yy[keep], win[keep]
+        win = np.ones(len(vv), dtype=np.float64)
 
     stf: NDArray[np.float64] = np.zeros(len(uvec), dtype=np.float64)
     for i in range(len(uvec)):
@@ -81,8 +86,28 @@ def sineFT(  # noqa: N802 (legacy API)
     window: int = 0,
 ) -> NDArray[np.float64]:
     """
-    Perform the sine Fourier transform of the structure factor (legacy behavior).
+    Sine Fourier transform of the structure factor S(Q) (columns Q, S).
+
+    Returns an (N_r, 6) array with columns r, G(r), g(r), RDF(r), T(r), N(r):
+
+        G(r)   = 2/π · constant · ∫_0^qmax Q [S(Q) - selfsca] M(Q) sin(Qr) dQ
+        g(r)   = 1 + G(r) / (4πρr)          (0 at r <= 0)
+        RDF(r) = 4πρ r² g(r),   T(r) = 4πρ r g(r),   N(r) = ∫_{r0}^{r} RDF dr'
+
+    `window` selects M(Q):
+      0 = no window (truncation at qmax);
+      1 = standard Lorch, M(0) = 1. Conserves coordination numbers integrated
+          between flat regions of g(r) (e.g. from g = 0 to a minimum).
+
+    Notes
+    -----
+    Divergence from legacy: `window=1` was a normalised Lorch rescaled to
+    ∫ M dQ = qmax (M(0) ≈ 1.70), which inflated G(r) and coordination
+    numbers and drove g(r) to ≈ -0.7 at low r. It has been removed. Values
+    other than 0 and 1 now raise (legacy treated any non-zero as Lorch).
     """
+    if window not in (0, 1):
+        raise ValueError("sineFT: window must be 0 (no window) or 1 (Lorch).")
     soq = StrFactor[:, 1]
     q = StrFactor[:, 0]
 
@@ -99,9 +124,6 @@ def sineFT(  # noqa: N802 (legacy API)
     else:
         for qu in q:
             win.append(float(Lorch(float(qu), qmax)))
-        integral_lorch = integrate.simpson(win, q)
-        for i in range(len(win)):
-            win[i] = win[i] * qmax / float(integral_lorch)
 
     for r in nr:
         integ = (soq - selfsca) * q * np.sin(q * r) * win
