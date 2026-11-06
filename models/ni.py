@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from toscana.math.line_shapes import GaussianA
+from toscana.numerics.line_shapes import GaussianA
 from toscana.physics.crystallography import NI_LATTICE_PARAMETER, reflections_fcc
 
 if TYPE_CHECKING:

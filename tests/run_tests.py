@@ -1,14 +1,11 @@
 """
 Run the ToScaNA test suite with the standard library only.
 
-Usage (from anywhere, NOT with `python -m`):
+Usage (from the project root or anywhere else):
 
     python tests/run_tests.py            # all tests
     python tests/run_tests.py -v         # verbose
     python tests/run_tests.py test_fourier   # one module
-
-`python -m ...` would put the current directory on `sys.path`; when that is the
-project root, the `math/` and `io/` subpackages shadow the standard library.
 """
 
 from __future__ import annotations

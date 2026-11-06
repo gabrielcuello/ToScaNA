@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from toscana.data.xy import DataXYE
-from toscana.math.fitting import fittingRange
+from toscana.numerics.fitting import fittingRange
 from toscana.models.ni import niPeaks10
 from toscana.physics.crystallography import NI_LATTICE_PARAMETER, reflections_fcc
 from toscana.utils.dates import getDate

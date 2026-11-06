@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from toscana.math.peak_finding import find_minimum_within_range, find_peaks_in_range
+from toscana.numerics.peak_finding import find_minimum_within_range, find_peaks_in_range
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray

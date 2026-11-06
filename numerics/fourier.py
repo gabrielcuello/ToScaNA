@@ -40,7 +40,7 @@ def getSineFT(  # noqa: N802 (legacy API)
         stf(u) = 2/π · c · ∫_0^vmax (y(v) - s) · v · sin(v·u) · W(v) dv
 
     `w` selects the window W: 0 = none (truncation at vmax),
-    1 = standard Lorch with W(0) = 1 (see `toscana.math.windows`).
+    1 = standard Lorch with W(0) = 1 (see `toscana.numerics.windows`).
 
     Notes
     -----

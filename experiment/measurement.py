@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from toscana.io.loading import read_3col
+from toscana.dataio.loading import read_3col
 from toscana.isotopes.core import Element
 from toscana.physics.properties import getAbsXS, getAtomicDensity
 

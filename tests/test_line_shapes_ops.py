@@ -10,8 +10,8 @@ from helpers import quiet
 
 import numpy as np
 
-from toscana.math.fitting import fit_range, fittingRange, fittingRange0
-from toscana.math.line_shapes import (
+from toscana.numerics.fitting import fit_range, fittingRange, fittingRange0
+from toscana.numerics.line_shapes import (
     Gaussian,
     Gaussian_error,
     LorGau,
@@ -19,7 +19,7 @@ from toscana.math.line_shapes import (
     Lorentzian,
     Lorentzian_error,
 )
-from toscana.math.operations import wsum2
+from toscana.numerics.operations import wsum2
 
 X = np.linspace(-4, 5, 37)
 

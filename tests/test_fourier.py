@@ -10,9 +10,9 @@ from helpers import synthetic_liquid
 import numpy as np
 from scipy import integrate, special
 
-from toscana.math.fourier import backFT, getSineFT, getSineIntegral, sineFT
-from toscana.math.line_shapes import step
-from toscana.math.windows import Lorch, LorchArray
+from toscana.numerics.fourier import backFT, getSineFT, getSineIntegral, sineFT
+from toscana.numerics.line_shapes import step
+from toscana.numerics.windows import Lorch, LorchArray
 
 RHO = 0.1
 SQ, R_TRUE, G_TRUE = synthetic_liquid(RHO)

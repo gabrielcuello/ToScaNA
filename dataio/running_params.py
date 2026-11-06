@@ -9,7 +9,7 @@ def getRunningParams(parfile: str) -> dict[str, Any]:
 
     Notes
     -----
-    This is a legacy notebook-oriented parser distinct from `toscana.io.parameters.readParam`.
+    This is a legacy notebook-oriented parser distinct from `toscana.dataio.parameters.readParam`.
     It intentionally preserves the legacy dictionary shape (keys like `<ins>`, `<asc>`, ...).
     """
     shapes = ["cylinder"]

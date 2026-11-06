@@ -12,12 +12,12 @@ from helpers import in_tempdir, quiet
 
 import numpy as np
 
-import toscana.io.acquisition as acquisition
-import toscana.io.corrections as corrections
-from toscana.io.d4creg_outputs import getDiffA
-from toscana.io.numors import getNumorFiles
-from toscana.math.binning import get_xlim, rebin
-from toscana.math.operations import binary_sum
+import toscana.dataio.acquisition as acquisition
+import toscana.dataio.corrections as corrections
+from toscana.dataio.d4creg_outputs import getDiffA
+from toscana.dataio.numors import getNumorFiles
+from toscana.numerics.binning import get_xlim, rebin
+from toscana.numerics.operations import binary_sum
 
 _ = helpers
 
@@ -173,7 +173,7 @@ class TestWorkflow(unittest.TestCase):
                     "startTime": "", "endTime": ""}
             return meta, rng.poisson(1000, (9, 64)).astype(float)
 
-        from toscana.io.parameters import readParam
+        from toscana.dataio.parameters import readParam
 
         with in_tempdir() as tmp, mock.patch.object(acquisition, "load_nxs", fake_nxs):
             (tmp / "par.txt").write_text(

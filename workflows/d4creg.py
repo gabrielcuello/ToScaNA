@@ -6,9 +6,9 @@ from typing import Any
 
 import numpy as np
 
-from toscana.io.acquisition import getNumors
-from toscana.io.d4creg_outputs import getDiffA, saveDiffAngle, saveDiffQ
-from toscana.math.binning import rebin
+from toscana.dataio.acquisition import getNumors
+from toscana.dataio.d4creg_outputs import getDiffA, saveDiffAngle, saveDiffQ
+from toscana.numerics.binning import rebin
 from toscana.physics.conversions import ang2q
 from toscana.plotting.workflows import makePlotsA, makePlotsQ
 from toscana.utils.dates import getDate

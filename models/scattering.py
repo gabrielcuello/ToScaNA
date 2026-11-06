@@ -7,7 +7,7 @@ from __future__ import annotations
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from toscana.math.polynomials import polyQ2
+from toscana.numerics.polynomials import polyQ2
 
 
 def inelastic(

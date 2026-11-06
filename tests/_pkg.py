@@ -2,9 +2,9 @@
 Make the project importable as `toscana` without installing it.
 
 The project directory is named `ToScaNA-pilot`, while the code imports itself
-as `toscana`. This helper registers the package under that name. It also keeps
-the project root OFF `sys.path`: the subpackages `math/` and `io/` would
-otherwise shadow the standard-library modules of the same name.
+as `toscana`. This helper registers the package under that name, and keeps the
+project root off `sys.path` so its subpackages (data, models, utils, ...) are
+only reachable as `toscana.<name>` and cannot shadow third-party modules.
 """
 
 from __future__ import annotations

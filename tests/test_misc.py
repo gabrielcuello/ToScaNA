@@ -185,6 +185,44 @@ class TestMeasurementShowTable(unittest.TestCase):
         self.assertIn("Input parameters", text)
 
 
+class TestProjectLayout(unittest.TestCase):
+    def test_no_module_shadows_the_standard_library(self) -> None:
+        root = helpers._pkg.ROOT
+        names = {p.stem for p in root.rglob("*.py")} | {
+            p.name for p in root.rglob("*") if p.is_dir() and not p.name.startswith((".", "_"))
+        }
+        clashes = sorted(n for n in names if n in sys.stdlib_module_names)
+        self.assertEqual(clashes, [])
+
+    def test_stdlib_importable_from_project_root(self) -> None:
+        import subprocess
+
+        code = "import math, io, lmfit, numpy; print(math.__file__ or 'builtin')"
+        out = subprocess.run(
+            [sys.executable, "-c", code], cwd=helpers._pkg.ROOT,
+            capture_output=True, text=True, env={**__import__("os").environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+        self.assertEqual(out.returncode, 0, out.stderr[-500:])
+
+    def test_old_package_names_still_work_with_warning(self) -> None:
+        import importlib
+        import warnings
+
+        import toscana
+        from toscana.numerics import fourier
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            old = importlib.import_module("toscana.math.fourier")
+            self.assertIs(old, fourier)
+            from toscana.io.loading import read_3col  # noqa: F401
+            self.assertIs(toscana.math, toscana.numerics)  # type: ignore[attr-defined]
+            self.assertIs(toscana.io, toscana.dataio)  # type: ignore[attr-defined]
+        self.assertGreaterEqual(
+            sum(issubclass(w.category, DeprecationWarning) for w in caught), 3
+        )
+
+
 class TestSourceHygiene(unittest.TestCase):
     def test_no_mojibake(self) -> None:
         root = helpers._pkg.ROOT
