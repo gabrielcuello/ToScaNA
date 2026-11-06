@@ -62,6 +62,20 @@ class TestProperties(unittest.TestCase):
         self.assertAlmostEqual(getAbsXS(5.08, 1.798), 5.08, places=3)
 
 
+class TestVanadiumStandard(unittest.TestCase):
+    def test_default_density_and_consistency(self) -> None:
+        import inspect
+
+        from helpers import quiet
+        from toscana.experiment import info
+
+        vana = quiet(info.setVanaInfo)
+        self.assertEqual(vana["den_gcc"], 6.11)
+        self.assertAlmostEqual(vana["den_aac"], 6.11 * 0.602214076 / 50.9415, places=12)
+        vanadens = inspect.signature(info.setSampleInfo).parameters["vanadens"].default
+        self.assertAlmostEqual(vanadens, vana["den_aac"], places=15)
+
+
 class TestModels(unittest.TestCase):
     def test_inelastic_limits(self) -> None:
         a = 51.0

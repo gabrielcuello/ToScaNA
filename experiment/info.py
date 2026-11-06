@@ -13,6 +13,12 @@ from toscana.physics.properties import (
 )
 from toscana.utils.dicts import extractAttr
 
+# Vanadium standard: macroscopic density (g/cm3) and molar mass (g/mol).
+# Legacy used 6.51 g/cm3 (0.0769591 atoms/A3); the vanadium density is 6.11.
+VANADIUM_DENSITY_GCC = 6.11
+VANADIUM_MOLAR_MASS = 50.9415
+VANADIUM_ATOMIC_DENSITY = VANADIUM_DENSITY_GCC * 0.602214076 / VANADIUM_MOLAR_MASS
+
 
 def setExpInfo(
     Proposal: str = "6-01-000",
@@ -292,7 +298,7 @@ def setVanaInfo(
     NAtoms: float = 1.0,
     Diam: float = 6.08,
     Height: float = 50.0,
-    density: float = 6.51,
+    density: float = VANADIUM_DENSITY_GCC,
 ) -> dict[str, Any]:
     """
     Create a dictionary with information about the vanadium (legacy behavior).
@@ -368,7 +374,7 @@ def setSampleInfo(
     wavelength: float = 0.5,
     beamH: float = 50.0,
     vanavol: float = 1.0,
-    vanadens: float = 0.0769591,
+    vanadens: float = VANADIUM_ATOMIC_DENSITY,
     height: float = 60.0,
     diameter: float = 5.0,
     mass: float = 1.0,
