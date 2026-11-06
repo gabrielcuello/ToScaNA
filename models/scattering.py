@@ -7,11 +7,16 @@ from __future__ import annotations
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
+from toscana.numerics.line_shapes import SIGMOID_DQ, SIGMOID_Q0
 from toscana.numerics.polynomials import polyQ2
 
 
 def inelastic(
-    x: ArrayLike, A: float = 51.0, lowQ: float = 0.4, Q0: float = 7.0, dQ: float = 2.4
+    x: ArrayLike,
+    A: float = 51.0,
+    lowQ: float = 0.4,
+    Q0: float = SIGMOID_Q0,
+    dQ: float = SIGMOID_DQ,
 ) -> NDArray[np.float64]:
     """
     Calculate the inelastic behaviour using a sigmoidal function.
@@ -81,8 +86,8 @@ def vanaQdep(
     a2: float,
     A: float = 51.0,
     lowQ: float = 0.4,
-    Q0: float = 7.4,
-    dQ: float = 2.4,
+    Q0: float = SIGMOID_Q0,
+    dQ: float = SIGMOID_DQ,
 ) -> NDArray[np.float64]:
     """
     Function describing the general behaviour of incoherent Vanadium signal.
@@ -103,7 +108,8 @@ def vanaQdep(
     lowQ : float, optional
         Limiting value at Q -> 0. Default is 0.4.
     Q0 : float, optional
-        Inflexion point. Default is 7.4.
+        Inflexion point. Default is 7.0 (legacy default here was 7.4;
+        unified with `inelastic`).
     dQ : float, optional
         Transition width. Default is 2.4.
 

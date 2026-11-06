@@ -404,9 +404,25 @@ def setSampleInfo(
     CohSL = AtomicAvg(c_sample, extractAttr(elements, "re_bcoh"))
     A = AtomicAvg(c_sample, extractAttr(elements, "A"))
 
-    FreeCohXS = getFreeXS(BoundXS=CohXS, A=A)
-    FreeIncXS = getFreeXS(BoundXS=IncXS, A=A)
-    FreeScaXS = getFreeXS(BoundXS=ScaXS, A=A)
+    # Free-atom cross sections element by element:
+    #   σ_free = Σ c_i σ_i (A_i/(A_i+1))²,  A_i = m_i / m_n.
+    # Bug fix vs legacy: legacy applied the factor once with the AVERAGE mass
+    # number, which is badly wrong for samples with light atoms (H, D, Li).
+    def _free(attr: str) -> float:
+        return float(
+            sum(
+                c_sample[key]
+                * getFreeXS(
+                    BoundXS=float(getattr(elements[key], attr)),
+                    A=getMassNumber(float(elements[key].weight)),
+                )
+                for key in c_sample
+            )
+        )
+
+    FreeCohXS = _free("sig_coh")
+    FreeIncXS = _free("sig_inc")
+    FreeScaXS = _free("sig_sca")
     SelfQ0 = IncXS / 4.0 / np.pi
 
     VolRatioSV = volumeInBeam / vanavol

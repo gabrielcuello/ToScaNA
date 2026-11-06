@@ -3,51 +3,63 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
+from scipy.special import expit  # type: ignore[import-untyped]
 
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
+
+
+# Default centre (1/Å) and width (1/Å) of the low-Q -> high-Q transition
+# used by `sigmoidal`, `siglin`, `models.scattering.inelastic` and `vanaQdep`.
+SIGMOID_Q0 = 7.0
+SIGMOID_DQ = 2.4
 
 
 def sigmoidal(
     Q: ArrayLike,
     lowQ: float = 0.4,
     highQ: float = 0.2,
-    Q0: float = 7.0,
-    dQ: float = 2.4,
+    Q0: float = SIGMOID_Q0,
+    dQ: float = SIGMOID_DQ,
 ) -> NDArray[np.float64]:
     """
-    Calculate a sigmoidal-like function, preserving legacy behavior.
+    Logistic step from `lowQ` (Q -> 0) to `highQ` (Q -> ∞):
+
+        f(Q) = (lowQ + highQ·δ) / (1 + δ),   δ = exp((Q - Q0)/dQ)
+
+    f(Q0) = (lowQ + highQ)/2 (inflexion point); dQ is the transition width.
 
     Notes
     -----
-    The legacy implementation uses:
-        delta = exp((Q - Q0) / dQ)
-        return delta*lowQ + (1-delta)*highQ
-    which is not a standard logistic form, but we preserve it for parity.
+    Bug fix vs legacy: legacy returned δ·lowQ + (1-δ)·highQ, which is
+    unbounded, has negative weights for Q > Q0, and goes from highQ to lowQ
+    (the opposite of what the parameter names state). Computed with
+    `scipy.special.expit` so large |Q - Q0|/dQ does not overflow.
     """
     q = np.asarray(Q, dtype=np.float64)
-    delta = np.exp((q - Q0) / dQ)
-    return delta * lowQ + (1.0 - delta) * highQ
+    weight_high = expit((q - Q0) / dQ)  # δ / (1 + δ)
+    return np.asarray(lowQ + (highQ - lowQ) * weight_high, dtype=np.float64)
 
 
 def siglin(
     Q: ArrayLike,
     lowQ: float = 0.4,
     highQ: float = 0.2,
-    Q0: float = 7.0,
-    dQ: float = 2.4,
+    Q0: float = SIGMOID_Q0,
+    dQ: float = SIGMOID_DQ,
     a1: float = 0.001,
 ) -> NDArray[np.float64]:
     """
-    Calculate a sigmoidal-like function with an (unused) linear term (legacy behavior).
+    Logistic step (`sigmoidal`) plus a linear term: f(Q) = sigmoidal(Q) + a1·Q.
 
     Notes
     -----
-    The legacy implementation ignores `a1` and returns the same expression as `sigmoidal`.
-    We preserve that behavior for parity.
+    Divergence from legacy: legacy ignored `a1` and returned `sigmoidal`.
+    The linear term is now applied as an additive slope over the whole Q
+    range; use a1 = 0 to obtain the pure sigmoid.
     """
-    _ = a1
-    return sigmoidal(Q, lowQ=lowQ, highQ=highQ, Q0=Q0, dQ=dQ)
+    q = np.asarray(Q, dtype=np.float64)
+    return np.asarray(sigmoidal(q, lowQ=lowQ, highQ=highQ, Q0=Q0, dQ=dQ) + a1 * q)
 
 
 def step(q: float, qmax: float = 23.5) -> float:

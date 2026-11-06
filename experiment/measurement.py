@@ -9,7 +9,7 @@ import numpy as np
 
 from toscana.dataio.loading import read_3col
 from toscana.isotopes.core import Element
-from toscana.physics.properties import getAbsXS, getAtomicDensity
+from toscana.physics.properties import getAbsXS, getAtomicDensity, getMassNumber
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -126,9 +126,14 @@ class Measurement:
 
         self.Title = inputPar["<Stitle>"][1]
 
-        # Note: legacy uses (ro - ri)^2 rather than (ro^2 - ri^2); preserve.
+        # Sample volume (cm3) of a cylinder or annulus: π h (ro² - ri²), mm³/1000.
+        # Bug fix vs legacy: legacy used (ro - ri)², which is only right for
+        # solid cylinders (ri = 0).
         self.Volume = (
-            np.pi * self.Height / 1000.0 * (self.OuterRadius - self.InnerRadius) ** 2
+            np.pi
+            * self.Height
+            / 1000.0
+            * (self.OuterRadius**2 - self.InnerRadius**2)
         )
         self.EffDensity = self.Mass / float(self.Volume)
         self.PackingFraction = self.EffDensity / self.Density
@@ -185,6 +190,11 @@ class Measurement:
         self.sinc = 0.0
         self.ssca = 0.0
         self.sabs = 0.0
+        # Free-atom scattering cross section, element by element:
+        #   σ_free = Σ c_i σ_sca,i (A_i / (A_i + 1))²,  A_i = m_i / m_n.
+        # Bug fix vs legacy: legacy applied (M̄/(M̄+m_n))² with the MEAN molar
+        # mass, which is badly wrong for samples with light atoms (H, D, Li).
+        self.free = 0.0
         for symbol in list(atoms.keys()):
             iso = Element(symbol)
             self.molarMass += iso.weight * conc[symbol]
@@ -194,12 +204,11 @@ class Measurement:
             self.sinc += iso.sig_inc * conc[symbol]
             self.ssca += iso.sig_sca * conc[symbol]
             self.sabs += iso.sig_abs * conc[symbol]
+            mass_ratio = getMassNumber(iso.weight)  # m_i / m_n
+            self.free += conc[symbol] * iso.sig_sca * (mass_ratio / (mass_ratio + 1.0)) ** 2
 
         self.bcoh = float(cmath.polar(bcoh_acc)[0])
         self.binc = float(cmath.polar(binc_acc)[0])
-        self.free = (
-            self.ssca * (self.molarMass / (self.molarMass + Element("n1").weight)) ** 2
-        )
         self.b2lowQ = self.ssca / 4 / np.pi
         self.b2highQ = self.free / 4 / np.pi
         self.sabswl = getAbsXS(self.sabs, self.wavelength)

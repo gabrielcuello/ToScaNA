@@ -48,6 +48,9 @@ def setting_model_d4nifit(  # noqa: N802 (legacy API)
 
     nickel.y = nickel.y / flat_valley_y
     nickel.ymax = nickel.ymax / float(flat_valley_y)
+    # Bug fix vs legacy: rescale the errors with the data (needed for the
+    # weighted fit). Negative values are the "no error" flag of 2-column files.
+    nickel.e = np.where(nickel.e > 0, nickel.e / flat_valley_y, nickel.e)
 
     nickel.plot()
 
@@ -170,7 +173,16 @@ def fitting_model_d4nifit(  # noqa: N802 (legacy API)
     xfit, yfit, efit = fittingRange(
         limits[0], limits[1], limits[2], limits[3], nickel.x, nickel.y, nickel.e
     )
-    _ = efit
+    # Weighted least squares, weights 1/σ (divergence from legacy, which ignored
+    # the errors). lmfit keeps scale_covar=True, so the reported uncertainties
+    # are also scaled by sqrt(reduced χ²) and account for model misfit.
+    # Without valid errors (e.g. 2-column files, σ = -1) the fit is unweighted.
+    efit = np.ravel(efit)
+    if efit.size and np.all(np.isfinite(efit)) and np.all(efit > 0):
+        weights = 1.0 / efit
+    else:
+        weights = None
+        print("WARNING: no valid errors in the Ni data; fitting without weights.")
 
     gmodel = lm.Model(niPeaks10)
     gmodel.set_param_hint("I0", vary=True)
@@ -187,8 +199,9 @@ def fitting_model_d4nifit(  # noqa: N802 (legacy API)
         gmodel.set_param_hint(f"S{i}", vary=True)
 
     result = gmodel.fit(
-        yfit,
-        x=xfit,
+        np.ravel(yfit),
+        x=np.ravel(xfit),
+        weights=weights,
         I0=initial[0],
         slope=initial[1],
         quad=initial[2],
