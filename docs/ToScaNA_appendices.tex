@@ -14,6 +14,7 @@
 %  or book class the three appendices become chapters, otherwise sections.
 %  Packages needed: inputenc(utf8) fontenc(T1) lmodern textcomp amsmath amssymb
 %  booktabs longtable array tabularx enumitem xcolor(dvipsnames) listings hyperref
+%  (with \PassOptionsToPackage{obeyspaces,spaces}{url} before hyperref)
 % =====================================================================
 \ifdefined\ToScaNAManual\else
 \documentclass[11pt,a4paper]{article}
@@ -27,6 +28,8 @@
 \usepackage{enumitem}
 \usepackage[dvipsnames]{xcolor}
 \usepackage{listings}
+% keep spaces inside \code{...} and allow line breaks there
+\PassOptionsToPackage{obeyspaces,spaces}{url}
 \usepackage[hidelinks]{hyperref}
 \urlstyle{tt}
 \begin{document}
@@ -766,6 +769,16 @@ Silent prints on bad input & \code{ValueError} (unknown isotope, invalid \code{c
     directory.
   \item \code{saveCORRECT} writes the keyword \code{wavelenght}; to be
     checked against what CORRECT accepts.
+  \item \code{getRunningParams} (sample-description file) still splits lines
+    on single spaces and keeps the newline on a text value that ends its
+    line (the defect corrected in \code{readParam}, C25): \code{<Cmater> V}
+    gives \code{"V\textbackslash n"} and a false ``not available'' warning.
+    Work-around: end every line with a comment.
+  \item \code{saveCORRECT} needs attributes (\code{sampleTitle},
+    \code{sampleOuterRadius}, \code{sampleTemperature}, \code{sampleDensity},
+    \code{samplePackingFraction}, \code{sampleFullness}, \code{containerFile},
+    \code{environmentFile}, \code{vanadium}, \code{vanadiumFile}) that
+    \code{Measurement} does not provide.
 \end{itemize}
 
 \paragraph{Engineering.} A \code{pyproject.toml} so that the package

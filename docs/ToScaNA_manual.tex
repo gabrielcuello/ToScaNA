@@ -1,0 +1,825 @@
+% =====================================================================
+%  ToScaNA -- User manual
+%  Compile:  latexmk -pdf ToScaNA_manual.tex      (or pdflatex three times)
+%  The appendices (audit, tests, module reference) are in
+%  ToScaNA_appendices.tex, included at the end.
+% =====================================================================
+\documentclass[11pt,a4paper]{report}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{textcomp}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs,longtable,array,tabularx}
+\usepackage{enumitem}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{listings}
+% keep spaces inside \code{...} and allow line breaks there
+\PassOptionsToPackage{obeyspaces,spaces}{url}
+\usepackage[hidelinks]{hyperref}
+\urlstyle{tt}
+
+% Shared macros (also used by the appendices)
+\DeclareRobustCommand{\code}[1]{\path{#1}}
+\makeatletter\g@addto@macro\UrlBreaks{\do\_\do\(\do\,\do\=\do\[}\makeatother
+\newcommand{\st}[1]{\textsf{\footnotesize\colorbox{black!8}{#1}}}
+\newcommand{\fixed}[1]{\textsf{\footnotesize\colorbox{green!15}{fixed #1}}}
+\newcommand{\newbeh}{\textsf{\footnotesize\colorbox{orange!20}{results change}}}
+\newcommand{\legacy}{\textsf{\footnotesize\colorbox{black!8}{legacy}}}
+\newcommand{\warn}[1]{\par\smallskip\noindent\colorbox{orange!12}{\parbox{\dimexpr\linewidth-2\fboxsep}{\textbf{Caution.} #1}}\par\smallskip}
+\newcommand{\tip}[1]{\par\smallskip\noindent\colorbox{green!8}{\parbox{\dimexpr\linewidth-2\fboxsep}{\textbf{Tip.} #1}}\par\smallskip}
+\lstset{basicstyle=\ttfamily\small,columns=fullflexible,keepspaces=true,
+        frame=single,framerule=0.3pt,backgroundcolor=\color{black!3},
+        breaklines=true,showstringspaces=false,aboveskip=6pt,belowskip=6pt,
+        upquote=true}
+\lstdefinelanguage{toscanapar}{morecomment=[l]{\#},morecomment=[l]{!}}
+\setlist{itemsep=2pt,topsep=3pt}
+\setlength{\emergencystretch}{3em}
+
+\def\ToScaNAManual{}   % tells ToScaNA_appendices.tex it is part of this manual
+
+\title{\textbf{ToScaNA}\\[4pt]\Large Total Scattering Neutron Analysis\\[2pt]
+\large User manual}
+\author{Version 0.1.0 (branch \code{fixes/group-a})}
+\date{November 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+% =====================================================================
+\chapter{Introduction}
+% =====================================================================
+
+\section{What ToScaNA does}
+
+ToScaNA is a Python package for the reduction and analysis of neutron
+total-scattering data measured on the diffractometer D4 at the Institut
+Laue-Langevin. It covers the path from the raw detector counts to the
+real-space correlation functions:
+
+\begin{enumerate}
+  \item \textbf{Regrouping} (\code{d4creg}): reading the raw numors,
+    correcting for dead time and detector efficiency, normalising to the
+    monitor, computing the angle of every detector cell, combining all
+    numors and cells on a regular $2\theta$ grid, converting to momentum
+    transfer $Q$, and writing the diffractograms in the formats of D4 and of
+    the program CORRECT (Chapter~\ref{ch:d4creg}).
+  \item \textbf{Calibration} of the incident wavelength $\lambda$ and of the
+    zero angle $2\theta_0$ with a nickel powder (Chapter~\ref{ch:nickel}).
+  \item \textbf{Description of the experiment}: sample composition,
+    geometry and density, container, environment and vanadium standard,
+    with the nuclear data needed for the corrections
+    (Chapter~\ref{ch:sample}).
+  \item \textbf{Models} used when normalising the data: vanadium $Q$
+    dependence, inelasticity, self scattering, cross sections
+    (Chapter~\ref{ch:models}).
+  \item \textbf{Fourier transformation} of the structure factor $S(Q)$ into
+    $G(r)$, $g(r)$, the radial distribution function, $T(r)$ and the running
+    coordination number $N(r)$, with optional window function and exact
+    statistical error bars (Chapter~\ref{ch:realspace}).
+\end{enumerate}
+
+\noindent The corrections for attenuation, multiple scattering, container
+and environment are computed by the external program CORRECT; ToScaNA
+prepares its input files.
+
+\section{How this manual is organised}
+
+Chapters~\ref{ch:install}--\ref{ch:maintenance} explain how to install and
+use the package, with worked examples and the formats of all input and
+output files. Chapter~\ref{ch:troubleshooting} lists common error messages.
+The appendices contain the technical details:
+\begin{itemize}
+  \item Appendix~\ref{app:audit}: the audit of the code made in November
+    2026, every correction with its physical justification, and the open
+    items;
+  \item Appendix~\ref{app:tests}: the automatic test suite;
+  \item Appendix~\ref{app:reference}: a reference of every module, function
+    and class.
+\end{itemize}
+The same information as in Appendix~\ref{app:reference}, in more detail,
+is available inside Python: every module, function and class has a
+docstring, displayed by \code{help()}:
+\begin{lstlisting}[language=Python]
+import toscana.numerics.fourier as fourier
+help(fourier.sineFT)        # or, in Jupyter:  fourier.sineFT?
+\end{lstlisting}
+
+\section{Conventions}
+
+Angles are in degrees, $Q$ in \AA$^{-1}$, $r$ and $\lambda$ in \AA, sample
+dimensions in mm, macroscopic densities in g/cm$^3$, atomic number densities
+in atoms/\AA$^3$, scattering lengths in fm and cross sections in barns. The
+definitions of the real-space functions are given in
+Section~\ref{sec:conventions}. Throughout this manual, labels such as \st{C2}
+refer to the findings of the audit (Appendix~\ref{app:audit}), and
+\newbeh{} marks behaviour that differs from the original version of the
+code.
+
+% =====================================================================
+\chapter{Installation}\label{ch:install}
+% =====================================================================
+
+\section{Requirements}
+
+\begin{longtable}{@{}l l p{0.55\textwidth}@{}}
+\toprule
+Package & Needed for & Notes \\
+\midrule\endhead
+Python $\ge$ 3.10 & everything & tested with 3.11.15 \\
+NumPy & everything & tested with 2.4.3 \\
+SciPy & everything & integration, peak finding, special functions; tested with 1.17.1 \\
+matplotlib & plots & imported only by plotting functions \\
+lmfit & Ni calibration & tested with 1.3.4 \\
+h5py & NeXus raw data & imported only by \code{load_nxs} \\
+\bottomrule
+\end{longtable}
+
+\section{Making the package importable}
+
+The code imports itself under the name \code{toscana} (for example
+\code{from toscana.numerics.fourier import sineFT}), but the project
+directory is called \code{ToScaNA-pilot}. There is no installer yet
+(\code{pyproject.toml} is an open item), so Python must be told where to
+find a directory named \code{toscana}. The simplest way is a symbolic link
+in a folder of your choice, added to the search path:
+\begin{lstlisting}
+mkdir -p ~/python_packages
+ln -s /Users/cuello/AI-lab/ToScaNA-pilot ~/python_packages/toscana
+export PYTHONPATH=~/python_packages:$PYTHONPATH     # e.g. in ~/.zshrc
+\end{lstlisting}
+In a Jupyter notebook, instead of \code{PYTHONPATH}:
+\begin{lstlisting}[language=Python]
+import sys
+sys.path.insert(0, "/Users/cuello/python_packages")
+import toscana
+print(toscana.__version__)          # 0.1.0
+\end{lstlisting}
+
+\warn{Do not add the project directory itself (\code{ToScaNA-pilot}) to
+\code{sys.path}; add its \emph{parent} folder (or the folder containing the
+link). The package must be reached as \code{toscana.xxx}; otherwise its
+subpackages (\code{data}, \code{models}, \code{utils}, \ldots) could be
+confused with other modules of the same name.}
+
+\section{Checking the installation}
+
+Run the test suite (Appendix~\ref{app:tests}); it needs no installation
+and takes about 35 seconds:
+\begin{lstlisting}
+python /Users/cuello/AI-lab/ToScaNA-pilot/tests/run_tests.py
+...
+Ran 88 tests in 35.0s
+OK
+\end{lstlisting}
+
+\section{Old import names}
+
+Two subpackages were renamed because their names clashed with modules of
+the Python standard library (\st{C21}): \code{toscana.math} is now
+\code{toscana.numerics} and \code{toscana.io} is now \code{toscana.dataio}.
+The isotope class \code{Elemento} is now \code{Element}. The old names still
+work but print a \code{DeprecationWarning}; update notebooks when convenient:
+\begin{lstlisting}[language=Python]
+from toscana.math.fourier import sineFT        # old: works, with a warning
+from toscana.numerics.fourier import sineFT    # new
+\end{lstlisting}
+
+\section{Working directory of an experiment}
+
+Several functions read and write files at paths relative to the
+\emph{current working directory}. The expected layout is:
+\begin{lstlisting}
+experiment/
+  logfiles/            d4creg.log  (created automatically: ../logfiles from work/)
+  regdata/             figures saved by DataXYE.plot  (../regdata from work/)
+  work/                <- start Python / the notebook here
+    rawdata/           raw numors (path set by <rdp>)
+    effd4c.eff         detector efficiencies
+    dec.dec            bank angular shifts
+    vanadium.par       d4creg parameter file(s)
+    *.adat *.reg *.qdat  outputs of d4creg
+\end{lstlisting}
+
+% =====================================================================
+\chapter{Overview of an analysis}\label{ch:overview}
+% =====================================================================
+
+A typical D4 experiment is analysed in this order.
+\begin{enumerate}
+  \item \textbf{Regroup the Ni powder} measurement with \code{d4creg}, with
+    the zero angle set to 0 and the nominal wavelength.
+  \item \textbf{Calibrate}: fit the Ni diffractogram to obtain $\lambda$ and
+    $2\theta_0$ (Chapter~\ref{ch:nickel}).
+  \item \textbf{Regroup every measurement} (sample, empty container,
+    environment, vanadium, absorber) with \code{d4creg}, using the
+    calibrated $\lambda$ and $2\theta_0$ (Chapter~\ref{ch:d4creg}).
+  \item \textbf{Describe the experiment} in a sample-description file and
+    build a \code{Measurement} (Chapter~\ref{ch:sample}).
+  \item \textbf{Correct} with CORRECT: background and container
+    subtraction, attenuation and multiple scattering, normalisation to
+    vanadium; ToScaNA writes the command file.
+  \item \textbf{Obtain $S(Q)$}: subtract the self scattering, accounting for
+    inelasticity (Chapter~\ref{ch:models}).
+  \item \textbf{Transform to real space} and compute coordination numbers,
+    with error bars (Chapter~\ref{ch:realspace}).
+\end{enumerate}
+The data flow and the function responsible for each step are shown in
+Section~\ref{sec:chain}.
+
+% =====================================================================
+\chapter{Regrouping raw data: d4creg}\label{ch:d4creg}
+% =====================================================================
+
+\section{The parameter file}
+
+The regrouping is controlled by a text file read by
+\code{dataio.parameters.readParam}. Example (\code{vanadium.par}):
+\begin{lstlisting}[language=toscanapar]
+# d4creg parameters for the vanadium rod
+<rdp> rawdata/            # directory of the raw numors
+<fmt> Nexus               # Nexus, or anything else for ILL ASCII
+<eff> effd4c.eff          # efficiencies ("ones" = no correction)
+<dec> dec.dec             # bank shifts ("zeros", "manual")
+<tau> 2.4e-6 7.0e-6       # dead times: monitor, detector (s)
+<tol> 0.1 1.0             # angle tolerance (cells): warning, error
+<nor> monitor 80 1000000  # normalise to 10^6 monitor counts
+<wle> 0.49857             # wavelength (A), from the Ni calibration
+<zac> -0.1013             # zero angle (deg), from the Ni calibration
+<asc> 0.0 140.0 0.125     # angular grid: min max step (deg)
+<qsc> 0.0 23.8 0.02       # Q grid: min max step (1/A)
+<wri> False               # one file per numor?
+<plo> False               # plot the diffractograms?
+<out> vanadium            # base name of the output files
+<num> 387229-387288       # numors (single or first-last)
+<add> 387301              # more numors
+<run>                     # do it
+\end{lstlisting}
+Rules:
+\begin{itemize}
+  \item Every non-empty line starts with \code{\#} or \code{!} (comment), or
+    with a five-character tag such as \code{<wle>}. A line that starts with
+    a space is an error.
+  \item Values are separated by spaces; anything after \code{\#} on a tag
+    line is ignored.
+  \item The file is read from top to bottom; \code{<run>} starts the
+    regrouping with the values read so far. Several \code{<out>}/\code{<num>}/\code{<run>}
+    groups in one file perform several regroupings (e.g.\ sample, container
+    and vanadium in one go).
+  \item Tags not given keep their defaults. The complete list of tags and
+    defaults is in Appendix~\ref{app:reference}, \code{readParam}.
+\end{itemize}
+
+\noindent To run it, from the \code{work/} directory:
+\begin{lstlisting}[language=Python]
+from toscana.dataio.parameters import readParam
+runInfo = readParam("vanadium.par")
+\end{lstlisting}
+\code{readParam} first re-creates \code{../logfiles/d4creg.log}, so the log of
+a previous run is overwritten unless it was renamed (see below).
+
+\section{Auxiliary input files}
+
+\paragraph{Efficiencies} (\code{<eff>}): one line per cell,
+\code{bank cell efficiency}, both indices starting at 1; lines containing
+\code{\#} are ignored. A value $\le 0$ marks a dead cell, which is then
+excluded. Cells not listed keep efficiency 1.
+\begin{lstlisting}
+# bank cell efficiency
+1 1 0.9834
+1 2 1.0121
+...
+9 64 0.9977
+\end{lstlisting}
+
+\paragraph{Bank shifts} (\code{<dec>}): one line per bank, \code{bank shift}
+in degrees, added to the angle of every cell of that bank.
+
+\section{What happens during the regrouping}
+
+For each numor (\code{getOneNumor}):
+\begin{enumerate}
+  \item The raw counts $N$ of the 9 banks $\times$ 64 cells are read, with
+    the monitor $M$, the counting time $t$ and the angle of the first cell.
+  \item The read and requested angles are compared; a difference larger than
+    \code{<tol>} cell widths gives a warning or stops the program.
+  \item Poisson errors $\sigma = \sqrt{N}$ are computed on the raw counts.
+  \item Dead time (non-paralysable): $N \to N/(1-N\tau/t)$, cell by cell for
+    the detector and once for the monitor; errors scaled likewise.
+  \item Efficiency: $N\to N/\varepsilon$, $\sigma\to\sigma/\varepsilon$.
+  \item Normalisation: $y = N\,M_0/M$ with $M_0$ = \code{<nor>} monitor counts,
+    $\sigma_y^2 = (\sigma M_0/M)^2 + (y/\sqrt{M})^2$.
+  \item Angles: $2\theta = 2\theta_\mathrm{read} + \text{shift}_\text{bank} + 15^\circ\,\text{bank} + 0.125^\circ\,\text{cell}$,
+    then the zero angle $2\theta_0$ is subtracted.
+\end{enumerate}
+All numors are then combined (\code{getDiffA}): each cell is a rectangle of
+one cell width ($8^\circ/64 = 0.125^\circ$), split between the bins of the
+angular grid it overlaps, and weighted by the monitor share of its numor.
+Each bin receives the weighted mean of its contributions; its error is the
+error of a weighted mean, $\sqrt{\sum w^2\sigma^2}/\sum w$. This is done for
+the sum of the banks and for each bank separately. Finally the regrouped
+diffractogram is converted to $Q$ and rebinned onto the $Q$ grid
+(\code{rebin}), where each angular point is a rectangle of width
+$\Delta Q = \frac{2\pi}{\lambda}\cos\theta\,\Delta(2\theta)$.
+
+\tip{The angular step cannot be smaller than the cell width,
+$0.125^\circ$; a smaller value is replaced by $0.125^\circ$ with a warning.
+For the $Q$ step, \code{readParam} prints a recommended value,
+$\text{step}_{2\theta}\,\Delta Q_\text{range}/\Delta(2\theta)_\text{range}$.}
+
+\section{Output files}
+
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.22\textwidth} p{0.72\textwidth}@{}}
+\toprule
+File & Content \\
+\midrule\endhead
+\code{<out>.adat} & CORRECT format, angle scale: a header (\code{\#Block}, instrument, user, numors, title, date, binning, number of points) followed by three columns $2\theta$, intensity, error, for the sum of the banks. Only points with positive, finite intensity are written. \\
+\code{<out>.reg} & D4 format: a header with the equivalent \code{d4creg} command line, the efficiency and shift files, sample, user, normalisation, zero angle, wavelength and dead times; then one block per bank with four columns $2\theta$, intensity, error, $Q$. \\
+\code{<out>.qdat} & CORRECT format, $Q$ scale: three columns $Q$, intensity, error. \\
+\code{<numor>.cdat} & One per numor if \code{<wri> True} (or a single numor): angle, intensity, error, $Q$, cell identifier $1000\times\text{bank} + \text{cell}$. Note: its $Q$ column ignores the zero angle (open item, Section~\ref{sec:open}). \\
+\code{../logfiles/d4creg.log} & Count rates, dead-time factors, warnings; renamed at the end to \code{../logfiles/<log>.log}. With the default \code{<log>} the name becomes \code{d4creg.log.log}. \\
+\bottomrule
+\end{longtable}
+
+\noindent Intensities are counts per \code{<nor>} monitor counts (or per
+\code{<nor>} seconds). Errors are one standard deviation, propagated from
+counting statistics (they were corrected in this version, \newbeh{}
+\st{C2, C5, C29}).
+
+\section{Messages and their meaning}
+
+\begin{longtable}{@{}p{0.42\textwidth} p{0.52\textwidth}@{}}
+\toprule
+Message & Meaning / action \\
+\midrule\endhead
+\code{WARNING! The angle differs from the requested angle by more than 0.1 cell} & The detector was not exactly at the requested position; the measured angle is used. Usually harmless. \\
+\code{ERROR! ... more than 1.0 cell} (\code{ValueError}) & Probably a motor problem: check the numor, or relax \code{<tol>}. \\
+\code{getDTC_dcounts: correction factor < 0} & Count rate times dead time $\ge 1$: the numor cannot be corrected (wrong dead time, or a saturated detector). \\
+\code{WARNING: In getDiffA function ... angular step} & The step was smaller than a cell and was enlarged. \\
+\code{Invalid numor entry} / \code{Invalid numor range} & \code{<num>} must be 6 digits, or \code{first-last} with first $\le$ last. \\
+\code{Wrong input in line} & A line does not start with \code{\#}, \code{!} or \code{<}. \\
+\bottomrule
+\end{longtable}
+
+% =====================================================================
+\chapter{Calibration with nickel powder}\label{ch:nickel}
+% =====================================================================
+
+\section{Principle}
+
+The peak positions of a cubic powder depend only on $\lambda/a$ and on the
+zero angle: $2\theta_{hkl} = 2\arcsin\bigl(\lambda\sqrt{h^2+k^2+l^2}/2a\bigr) + 2\theta_0$.
+Fitting the ten first reflections of fcc nickel, with a known lattice
+parameter $a$, gives $\lambda$ and $2\theta_0$. Each reflection is modelled by
+an asymmetric Gaussian, on a linear background
+(\code{models.ni.niPeaks10}). Because only $\lambda/a$ is measured, $a$ is
+\emph{fixed} in the fit, and the fitted $\lambda$ is proportional to it.
+The default is $a = 3.52$\,\AA{} (\code{NI_LATTICE_PARAMETER}); use the value
+of your powder's certificate if you have it.
+
+\section{Procedure}
+
+First regroup the Ni measurement with \code{d4creg}, with \code{<zac> 0.0} and
+the nominal wavelength. Then, in a notebook:
+\begin{lstlisting}[language=Python]
+from toscana.calibration.d4nifit import (
+    setting_model_d4nifit, fitting_model_d4nifit, showing_results_d4nifit)
+
+# 1. read the data, estimate lambda from the (111) peak, build the initial model
+axes, limits, xy_res, xy_ref, xy_fit, planes, initial, nickel = \
+    setting_model_d4nifit("Ni5.adat", zac_ini=0.0, lattice=3.52)
+
+# (optional) restrict the fitted range or change starting values
+limits[0] = 10.0          # lowest angle used in the fit (deg)
+
+# 2. fit (weighted by the errors of the data)
+result = fitting_model_d4nifit(nickel, limits, initial, lattice=3.52)
+
+# 3. table of results, plot with residuals, saved as Ni5.png
+showing_results_d4nifit(result, nickel, axes, limits,
+                        xy_res, xy_ref, xy_fit, planes)
+lam = result.params["wavelength"].value
+zac = result.params["twotheta0"].value
+\end{lstlisting}
+Copy $\lambda$ and $2\theta_0$ into \code{<wle>} and \code{<zac>} of the
+parameter files of the other measurements.
+
+\paragraph{What the first function does.} It reads the file with
+\code{DataXYE}, which finds the peaks between $5^\circ$ and $40^\circ$; it
+assumes the first peak is (111) and estimates
+$\lambda = 2(a/\sqrt3)\sin\theta_{111}$; it divides the intensities (and
+errors) by the value in the valley between the second and third peaks; it
+builds the 35 starting parameters (background, $\lambda$, $2\theta_0$, ten
+areas proportional to typical Ni intensities, ten asymmetries 0, ten widths)
+and plots the starting model. The order of \code{initial} is:
+\code{I0, slope, quad, wavelength, twotheta0, A0..A9, G0..G9, S0..S9}.
+
+\paragraph{What is fitted.} Free: background \code{I0} and \code{slope},
+\code{wavelength}, \code{twotheta0}, areas \code{A0..A9}, widths
+\code{S0..S9}. Fixed: \code{quad}, asymmetries \code{G0..G9}, \code{lattice}.
+The fit is weighted by $1/\sigma$ \newbeh{}; the uncertainties reported by
+lmfit are scaled by $\sqrt{\chi^2_\nu}$, so they include the effect of model
+imperfections. They are statistical uncertainties for a given lattice
+parameter: an error $\delta a/a$ adds $\delta\lambda/\lambda = \delta a/a$.
+
+\warn{The automatic peak search needs points between $5^\circ$ and
+$40^\circ$ whose height is more than 3.5 times the minimum of that range.
+If the (111) peak is not the first one found (e.g.\ because of an impurity),
+the initial wavelength is wrong; set \code{initial[3]} by hand before
+fitting.}
+
+% =====================================================================
+\chapter{Describing the experiment and the sample}\label{ch:sample}
+% =====================================================================
+
+\section{The sample-description file}
+
+The data-treatment notebooks read a second kind of parameter file with
+\code{dataio.running_params.getRunningParams}, and build a
+\code{experiment.Measurement} from it. A complete example, which was
+checked to work:
+\begin{lstlisting}[language=toscanapar]
+# ToScaNA sample-description file (read by getRunningParams)
+<ins> D4 # instrument
+<pro> 6-01-1234 # proposal
+<mpr> A.User # main proposer
+<lco> G.Cuello # local contact
+<dte> 01/03/2026-05/03/2026 # start-end dates
+<cyc> 261 # reactor cycle
+<log> 12-34 # notebook-page
+<env> Cryofurnace # sample environment
+<zac> -0.1013 # zero angle (deg)
+<wle> 0.4986 # wavelength (A)
+<sli> 3.0 -3.0 # left right slits (mm)
+<fla> 25.0 -25.0 # top bottom flags (mm)
+<apr> 0.125 # angular precision (deg)
+<asc> 1.0 136.0 0.125 # angular grid (deg)
+<qsc> 0.3 23.5 0.02 # Q grid (1/A)
+<rsc> 0.0 20.0 0.01 # r grid (A)
+<Cmater> V # container material
+<Cshape> cylinder 5.0 5.2 60.0 # type id od height (mm)
+<Nmater> V # normaliser
+<Nshape> cylinder 0.0 6.08 50.0 # vanadium rod
+<Amater> B # absorber
+<Ashape> cylinder 0.0 5.0 60.0 # absorber
+<Emater> V # environment
+<Eshape> cylinder 40.0 40.2 100.0 # furnace shield
+<Sdescr> Silica glass at room temperature # description
+<StempK> 295.0 # temperature (K)
+<Sato01> Si 1 # element number-of-atoms
+<Sato02> O 2 # element number-of-atoms
+<Sdegcc> 2.20 # density (g/cm3)
+<Smassc> 1.80 # mass in the beam (g)
+<Sshape> cylinder 0.0 5.0 60.0 # type id od height (mm)
+<Sfulln> 1.0 # fullness
+<Stitle> SiO2_RT # title
+<CoFile> SiO2_can.qdat # container data
+<AbFile> absorber.qdat # absorber data
+<NoFile> vanadium.qdat # vanadium data
+<EnFile> furnace.qdat # environment data
+<SaFile> SiO2_RT.qdat # sample data
+\end{lstlisting}
+
+\warn{In this file, separate values by \emph{exactly one} space, and end
+every tag line with a comment (\code{\# ...}). The parser splits on single
+spaces, and a text value that is the last word of its line keeps the
+newline character: \code{<Cmater> V} without a comment gives the material
+\code{"V\textbackslash n"} and the warning ``The container V is not
+available''. (The d4creg parameter file of Chapter~\ref{ch:d4creg} does not
+have this limitation since its parser was corrected, \st{C25}.)}
+
+\noindent Shapes are given as \code{type inner\_diameter outer\_diameter height}
+in mm; only \code{cylinder} is known. Elements are given as
+\code{<SatoNN> symbol number} with consecutive \code{NN} = 01, 02, \ldots; use
+the isotope names of the nuclear-data table for isotopic substitution
+(e.g.\ \code{H2} for deuterium, \code{Li7}). All tags above are required by
+\code{Measurement}, which also reads the five data files (3 columns:
+$x$, $y$, error).
+
+\section{The Measurement object}
+
+\begin{lstlisting}[language=Python]
+from toscana.dataio.running_params import getRunningParams
+from toscana.experiment.measurement import Measurement
+
+m = Measurement(getRunningParams("SiO2_RT.par"))
+m.showTable()                       # summary of the main parameters
+print(m.conc)                       # {'Si': 0.333..., 'O': 0.666...}
+print(m.AtomicDensity)              # 0.06615 atoms/A^3  (from 2.20 g/cm3)
+print(m.Volume, m.PackingFraction)  # 1.178 cm^3, 0.6945
+print(m.ssca, m.free, m.sabswl)     # 3.544, 3.170, 0.0158 barn/atom
+\end{lstlisting}
+The values in the comments are those of the example file. The most useful
+attributes are:
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.34\textwidth} p{0.60\textwidth}@{}}
+\toprule
+Attribute & Meaning \\
+\midrule\endhead
+\code{conc}, \code{atoms}, \code{natoms} & concentrations $c_i$, numbers of atoms in the formula unit, total \\
+\code{molarMass} & mean molar mass per atom (g/mol) \\
+\code{Density}, \code{AtomicDensity} & bulk density (g/cm$^3$) and atomic density $\rho$ (atoms/\AA$^3$) --- use $\rho$ in the Fourier transform \\
+\code{Volume}, \code{EffDensity}, \code{PackingFraction}, \code{EffAtomicDensity} & volume $\pi h(r_o^2-r_i^2)$ (cm$^3$), mass/volume, ratio to the bulk density, effective atomic density (powders) \\
+\code{scoh}, \code{sinc}, \code{ssca}, \code{sabs} & mean cross sections per atom (barn); \code{sabs} at 2200\,m/s \\
+\code{sabswl} & absorption at the wavelength, $\sigma_\mathrm{abs}\lambda/1.798$ \\
+\code{free} & free-atom scattering cross section $\sum c_i\sigma_i[A_i/(A_i+1)]^2$ \newbeh{} \\
+\code{b2lowQ}, \code{b2highQ} & self scattering per atom and steradian at low and high $Q$: $\sigma_\mathrm{sca}/4\pi$ and $\sigma_\mathrm{free}/4\pi$ \\
+\code{Data}, \code{conData}, \code{norData}, \code{envData}, \code{absData} & the five data sets, arrays $(n, 3)$ \\
+\bottomrule
+\end{longtable}
+
+\section{Dictionary-based description}
+
+An alternative, used in older notebooks, builds dictionaries with the
+functions of \code{experiment.info}: \code{setExpInfo}, \code{setBeamInfo},
+\code{setCanInfo}, \code{setBinInfo}, \code{setNumorInfo}, \code{setVanaInfo}
+and \code{setSampleInfo}. Each prints a summary and returns a dictionary
+(keys listed in their docstrings). \code{setSampleInfo} computes in addition
+the sample/vanadium volume and density ratios used to put the data on an
+absolute scale; the vanadium defaults are 6.11\,g/cm$^3$,
+$b_\mathrm{coh}=-0.443$\,fm, $\sigma_\mathrm{inc}=5.08$\,b.
+
+\section{Nuclear data}
+
+\begin{lstlisting}[language=Python]
+from toscana.isotopes import Element
+ni = Element("Ni")
+print(ni.re_bcoh, ni.sig_coh, ni.sig_inc, ni.sig_abs, ni.weight)
+#     10.3 fm     13.3 b      5.2 b        4.49 b       58.6934 u
+Element("Ni", table=1)          # print all values with units
+Element.getIsotope("Nickel")    # ['Ni58', 'Ni60', 'Ni61', 'Ni62', 'Ni64', 'Ni']
+\end{lstlisting}
+Values come from \emph{Neutron Scattering Fundamentals}, vol.~44,
+Appendix~2. Isotopes are named by symbol and mass number (\code{"Li6"},
+\code{"H2"} for deuterium); natural elements by their symbol. Any value can
+be overridden for a special case, e.g.\ \code{Element("V", re_bcoh=-0.40)}.
+An unknown name raises \code{ValueError}.
+
+\section{Input for CORRECT}
+
+Two functions write CORRECT command files:
+\begin{itemize}
+  \item \code{generate_com(template, name, rsample, density, ...)} fills the
+    placeholders \texttt{\{pyfname\}}, \texttt{\{pyradius\_cm\}},
+    \texttt{\{pydensity\_at\_AA3\}}, \ldots{} of a template file and writes
+    \code{<name>.com}. (It then runs a placeholder command; see open items.)
+  \item \code{saveCORRECT(expt)} writes \code{<sampleTitle>.com} from an
+    object that must provide the attributes \code{instrument},
+    \code{sampleTitle}, \code{sampleOuterRadius} (mm), \code{sampleTemperature},
+    \code{sampleDensity}, \code{samplePackingFraction}, \code{sampleFullness},
+    \code{containerFile}, \code{container} (index 3: outer diameter, mm),
+    \code{environmentFile}, \code{vanadiumFile}, \code{vanadium} (index 3:
+    outer diameter, mm), \code{wavelength}, \code{zeroAngle},
+    \code{beamHeight}, \code{beamWidth} (mm). \code{Measurement} does not
+    provide all of them (it uses \code{Title}, \code{OuterRadius},
+    \code{TempK}, \ldots), so such an object must be built by hand; check
+    the units expected by CORRECT for the density.
+\end{itemize}
+
+% =====================================================================
+\chapter{Normalisation models and data operations}\label{ch:models}
+% =====================================================================
+
+\section{Vanadium and self scattering}
+
+At low $Q$ a nucleus scatters as if bound, at high $Q$ as if free; the
+self-scattering level therefore falls from $\sigma_\mathrm{bound}/4\pi$ to
+$\sigma_\mathrm{free}/4\pi = [A/(A+1)]^2\sigma_\mathrm{bound}/4\pi$. ToScaNA
+models this with a logistic step centred at $Q_0$ of width $\mathrm{d}Q$
+(defaults 7.0 and 2.4\,\AA$^{-1}$, \code{SIGMOID_Q0}, \code{SIGMOID_DQ}):
+\begin{align*}
+  \texttt{inelastic}(Q) &= \mathrm{lowQ}\,\frac{1 + [A/(1+A)]^2\,\delta}{1+\delta},
+  \qquad \delta = e^{(Q-Q_0)/\mathrm{d}Q},\\
+  \texttt{vanaQdep}(Q) &= (a_0 + a_1Q + a_2Q^2)\times\texttt{inelastic}(Q),\\
+  \texttt{self024}(Q) &= s_0 + q_2Q^2 + q_4Q^4,\\
+  \texttt{sigmoidal}(Q) &= \frac{\mathrm{lowQ} + \mathrm{highQ}\,\delta}{1+\delta},
+  \qquad \texttt{siglin}(Q) = \texttt{sigmoidal}(Q) + a_1Q .
+\end{align*}
+These functions have the signature expected by fitting programs (first
+argument $Q$, then the parameters), so they can be fitted directly, e.g.
+\begin{lstlisting}[language=Python]
+import lmfit
+from toscana.models.scattering import vanaQdep
+model = lmfit.Model(vanaQdep)          # parameters a0, a1, a2, A, lowQ, Q0, dQ
+params = model.make_params(a0=1, a1=0, a2=0, A=51.0, lowQ=0.4, Q0=7.0, dQ=2.4)
+for name in ("A", "lowQ"):
+    params[name].vary = False
+fit = model.fit(y, params, x=Q, weights=1/e)
+\end{lstlisting}
+\code{models.cross_sections} gives the epithermal total cross section
+(\code{XS_model}) and the scattering probability including $1/v$ absorption
+(\code{scattering_probability}).
+
+\section{Operations on data sets}
+
+All data sets are arrays of three columns $(x, y, \sigma)$.
+\begin{itemize}
+  \item \code{binary_sum(w1, d1, w2, d2)}: $w_1y_1 + w_2y_2$ with
+    $\sigma = \sqrt{w_1^2\sigma_1^2 + w_2^2\sigma_2^2}$ --- e.g.\ sample minus
+    container, \code{binary_sum(1, sample, -1, can)}.
+  \item \code{wsum2(w1, d1, w2, d2)}: as above, or with \code{w1 = w2 = 0}
+    the inverse-variance weighted mean of two measurements, or with
+    \code{w2 = 0} the mixture $w_1y_1 + (1-w_1)y_2$.
+  \item \code{ratio(y1, e1, y2, e2)}: ratio with errors (lists).
+  \item \code{rebin(xdel, wlength, data, xmin, xmax, dbin)}: rebinning onto
+    a regular grid.
+  \item \code{fit_range}, \code{fittingRange}: points inside a rectangle,
+    for fitting a part of a curve.
+\end{itemize}
+The two data sets of a sum must be on the same $x$ grid; rebin them first
+if necessary.
+
+% =====================================================================
+\chapter{From S(Q) to real space}\label{ch:realspace}
+% =====================================================================
+
+\section{The transform}
+
+\code{numerics.fourier.sineFT} computes $G(r)$, $g(r)$, RDF$(r)$, $T(r)$
+and $N(r)$ from $S(Q)$ (definitions in Section~\ref{sec:conventions}):
+\begin{lstlisting}[language=Python]
+import numpy as np
+from toscana.dataio.loading import read_3col
+from toscana.numerics.fourier import sineFT
+from toscana.dataio.saving import saveRSCF
+
+SQ = read_3col("SiO2_RT.soq")          # columns: Q (1/A), S(Q), error
+rho = m.AtomicDensity                  # atoms/A^3 (0.06615 for silica)
+r = np.round(np.arange(0.0, 20.0 + 1e-9, 0.01), 10)   # r grid (A)
+
+fou = sineFT(SQ, r, qmax=23.5, density=rho, window=1, with_errors=True)
+saveRSCF("SiO2_RT.rscf", fou,
+         ["SiO2 at room temperature", "Qmax = 23.5 1/A, Lorch window"])
+\end{lstlisting}
+
+\paragraph{Arguments.}
+\begin{itemize}
+  \item \code{qmax}: the transform uses only $Q < Q_\mathrm{max}$. Choose
+    the largest $Q$ where $S(Q)$ is still reliable. Truncation produces
+    ripples of period $2\pi/Q_\mathrm{max}$ around each peak of $G(r)$ and
+    broadens the peaks.
+  \item \code{window}: \code{0} no window; \code{1} the standard Lorch
+    function $M(Q)=\sin(\pi Q/Q_\mathrm{max})/(\pi Q/Q_\mathrm{max})$, which
+    suppresses the ripples at the cost of a broadening of about
+    $\pi/Q_\mathrm{max}$. Both conserve coordination numbers
+    (Section~\ref{sec:fourier}) \newbeh{}.
+  \item \code{density}: the atomic number density $\rho$ in atoms/\AA$^3$.
+    It sets the baseline of $g(r)$ and of RDF$(r)$; an error in $\rho$ shows
+    up as $g(r)\neq0$ at low $r$.
+  \item \code{selfsca}: the value subtracted from $S(Q)$ (1 for a properly
+    normalised $S(Q)$); \code{constant}: an overall factor.
+  \item \code{with_errors}: needs a third column with the errors of $S(Q)$;
+    the output then has 11 columns.
+\end{itemize}
+
+\paragraph{Output.} An array with one row per $r$ and the columns
+\begin{center}
+\begin{tabular}{@{}l l@{}}
+\toprule
+\code{with_errors=False} & $r$, $G$, $g$, RDF, $T$, $N$ \\
+\code{with_errors=True} & $r$, $G$, $\sigma_G$, $g$, $\sigma_g$, RDF, $\sigma_\mathrm{RDF}$, $T$, $\sigma_T$, $N$, $\sigma_N$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\code{saveRSCF} writes either array with a header that describes every
+column; the file reads back with \code{np.loadtxt}.
+
+\section{Coordination numbers}
+
+The number of neighbours between $r_1$ and $r_2$ is the integral of the RDF.
+With the 11-column output, the RDF is column 5 and $N(r)$ column 9:
+\begin{lstlisting}[language=Python]
+from scipy import integrate
+r1, r2 = 1.40, 1.85                    # e.g. Si-O first shell in silica
+sel = (r >= r1) & (r <= r2)
+N12 = integrate.simpson(fou[sel, 5], x=r[sel])
+# equivalently, from the running integral:
+i1, i2 = np.searchsorted(r, [r1, r2])
+N12_bis = fou[i2, 9] - fou[i1, 9]
+\end{lstlisting}
+
+\tip{Place $r_1$ where $g(r)=0$ (below the first peak) and $r_2$ at a
+minimum. With the limits in these flat regions, the standard Lorch window
+and the plain transform give the same coordination number within about
+0.1\,\% (Section~\ref{sec:fourier}). Limits on the side of a peak make the
+result depend on the window and on $Q_\mathrm{max}$.}
+
+\warn{Make sure the limits are grid points. With \code{np.arange}, the value
+3.3 may be stored as 3.3000000000000003, and \code{r <= 3.3} then excludes
+it; since the RDF is large, one point can change $N$ by 1\,\%. Round the grid
+(\code{np.round(r, 10)}) as in the example.}
+
+\section{Error bars}
+
+The errors of the real-space functions are propagated exactly from the
+errors of $S(Q)$ (Section~\ref{sec:errors}). Keep in mind that:
+\begin{itemize}
+  \item they are statistical only; the uncertainties of the normalisation,
+    of $\rho$ and of the self-scattering subtraction usually dominate and
+    are not included;
+  \item points of $G(r)$ at different $r$ are strongly correlated; do not
+    treat them as independent in a fit;
+  \item $\sigma_N$ already accounts for these correlations, so it is the
+    right error of a coordination number from the running integral
+    \emph{starting at the first point of the grid}. The error of
+    $N(r_2)-N(r_1)$ is not $\sqrt{\sigma_N(r_2)^2-\sigma_N(r_1)^2}$; when
+    $r_1$ lies in the region $g=0$, $\sigma_N(r_2)$ is a good estimate.
+\end{itemize}
+
+\section{Back-transform and low-r cleaning}
+
+\code{backFT(Q, r, g, rho, cut)} sets $g(r)=0$ in chosen regions, transforms
+to $S(Q)$ and back to real space. It shows how much of $S(Q)$ comes from the
+unphysical oscillations of $g(r)$ below the first peak:
+\begin{lstlisting}[language=Python]
+from toscana.numerics.fourier import backFT
+g = fou[:, 3]                                  # g(r) (11-column output)
+Q = SQ[:, 0]
+S_new, G_new, g_new, rdf_new, T_new, N_new = backFT(Q, r, g, rho, [1.40])
+\end{lstlisting}
+\code{cut=[r0]} zeroes $r<r_0$; \code{[r0, a1, b1, a2, b2, ...]} zeroes in
+addition every interval $(a_k, b_k)$; \code{[-1]} zeroes $g$ up to its last
+negative value.
+
+% =====================================================================
+\chapter{Working with data files and plots}\label{ch:files}
+% =====================================================================
+
+\begin{itemize}
+  \item \code{DataXYE(filename)}: reads a 2- or 3-column file (header lines
+    starting with \code{\#} or \code{!}); attributes \code{x}, \code{y},
+    \code{e}, statistics, and a peak search in $[5^\circ, 40^\circ]$;
+    \code{.plot()} chooses the axis label from the extension
+    (\code{adat}, \code{reg}: angle; \code{qdat}, \code{soq}: $Q$; \code{pcf},
+    \code{pdf}, \code{rdf}, \code{tor}, \code{run}: $r$).
+  \item \code{read_3col(filename)} $\to$ array $(n,3)$;
+    \code{read_xye(filename)} $\to$ three arrays. A missing error becomes 0.
+  \item \code{saveFile_3col}, \code{saveFile_xye}: write 3 columns with a
+    header; \code{saveCorrelations}: six real-space columns from separate
+    arrays; \code{saveRSCF}: the output of \code{sineFT}.
+  \item \code{plotQ}, \code{plotA}, \code{plotR}: set labels, limits, grid
+    and legend of the current matplotlib figure.
+  \item \code{physics.conversions.ang2q}, \code{q2ang}: $Q\leftrightarrow2\theta$
+    for a given wavelength.
+\end{itemize}
+
+% =====================================================================
+\chapter{Tests, version control and maintenance}\label{ch:maintenance}
+% =====================================================================
+
+\section{Tests}
+
+\code{python tests/run_tests.py} runs the 88 tests in about 35 seconds and
+ends with \code{OK} when everything works. Run it after any change to the
+code. Appendix~\ref{app:tests} explains what each test checks and how to add
+one.
+
+\section{Version control}
+
+The project is a git repository. The original code is commit
+\code{1958d36}; all changes are on the branch \code{fixes/group-a}.
+Useful commands:
+\begin{lstlisting}
+git log --oneline                         # history
+git show 67b3663                          # one change, with explanation
+git diff 1958d36 -- numerics/fourier.py   # compare with the original
+git status                                # what has been modified
+git checkout main                         # switch branch
+\end{lstlisting}
+
+\section{Changing the code safely}
+
+\begin{enumerate}
+  \item Write a test that shows the problem (it fails).
+  \item Change the code until the test passes; run the whole suite.
+  \item Update the docstring of the function, and this manual if needed.
+  \item Commit with a message explaining why.
+\end{enumerate}
+
+% =====================================================================
+\chapter{Troubleshooting}\label{ch:troubleshooting}
+% =====================================================================
+
+\begin{longtable}{@{}p{0.40\textwidth} p{0.54\textwidth}@{}}
+\toprule
+Symptom & Cause and remedy \\
+\midrule\endhead
+\code{ModuleNotFoundError: No module named 'toscana'} & The package is not on the search path; see Chapter~\ref{ch:install}. \\
+\code{partially initialized module 'math'} (old versions) & Python found the old \code{math} folder of the project; fixed by the renaming (\st{C21}). \\
+\code{DeprecationWarning: toscana.math is deprecated} & Use \code{toscana.numerics} (and \code{toscana.dataio}, \code{Element}). \\
+\code{ValueError: sineFT: window must be 0 ... or 1} & Only no window or standard Lorch exist; the rescaled Lorch was removed. \\
+\code{ValueError: ... needs a third column} & \code{with_errors=True} requires $S(Q)$ errors. \\
+$g(r)$ clearly non-zero at low $r$ & Wrong $\rho$, wrong normalisation or self-scattering level of $S(Q)$, or $Q_\mathrm{max}$ too small. \\
+\code{ValueError: The isotope 'X' does not exist} & Check the symbol; isotopes as \code{"Li6"}, deuterium \code{"H2"}. \\
+``The container V is not available'' & In the sample-description file, end the line with a comment (Chapter~\ref{ch:sample}). \\
+Empty figure saved & Old versions saved after \code{show()}; fixed (\st{C22}). \\
+Results differ from older analyses & See the table of changes in Section~\ref{sec:migration}. \\
+\bottomrule
+\end{longtable}
+
+% =====================================================================
+\appendix
+\input{ToScaNA_appendices}
+
+\end{document}
