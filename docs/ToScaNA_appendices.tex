@@ -1,0 +1,1750 @@
+% =====================================================================
+%  ToScaNA -- Appendices to the user manual
+%    A. Audit of the code and corrections made (November 2026)
+%    B. The test suite
+%    C. Module reference
+%
+%  Compile stand-alone:      pdflatex ToScaNA_appendices.tex   (twice)
+%                       or:  latexmk -pdf ToScaNA_appendices.tex
+%
+%  Use inside the manual:  in the manual preamble write
+%        \def\ToScaNAManual{}
+%  load the packages listed below, then \input{ToScaNA_appendices}
+%  after \appendix. The stand-alone preamble is then skipped. In a report
+%  or book class the three appendices become chapters, otherwise sections.
+%  Packages needed: inputenc(utf8) fontenc(T1) lmodern textcomp amsmath amssymb
+%  booktabs longtable array tabularx enumitem xcolor(dvipsnames) listings hyperref
+% =====================================================================
+\ifdefined\ToScaNAManual\else
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{textcomp}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs,longtable,array,tabularx}
+\usepackage{enumitem}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{listings}
+\usepackage[hidelinks]{hyperref}
+\urlstyle{tt}
+\begin{document}
+\fi
+
+% ------------------------------------------------------------- macros
+% Heading levels: chapters in report/book manuals, sections in articles.
+\ifdefined\chapter
+  \providecommand{\tsapp}{\chapter}\providecommand{\tssec}{\section}\providecommand{\tssub}{\subsection}
+\else
+  \providecommand{\tsapp}{\section}\providecommand{\tssec}{\subsection}\providecommand{\tssub}{\subsubsection}
+\fi
+% \code{...}: verbatim identifiers, breakable after . _ ( , = / (url package)
+\ifdefined\code\else\DeclareRobustCommand{\code}[1]{\path{#1}}\fi
+\makeatletter\g@addto@macro\UrlBreaks{\do\_\do\(\do\,\do\=\do\[}\makeatother
+\providecommand{\fnx}[1]{\par\medskip\noindent\begingroup\raggedright\hangindent=2em{\color{NavyBlue}\bfseries\ttfamily #1}\par\endgroup\nopagebreak\smallskip}
+\providecommand{\tn}[1]{{\raggedright\ttfamily #1}}
+\providecommand{\fn}[1]{\par\medskip\noindent{\color{NavyBlue}\textbf{\texttt{\detokenize{#1}}}}\par\nopagebreak\smallskip}
+\providecommand{\st}[1]{\textsf{\footnotesize\colorbox{black!8}{#1}}}
+\providecommand{\fixed}[1]{\textsf{\footnotesize\colorbox{green!15}{fixed #1}}}
+\providecommand{\newbeh}{\textsf{\footnotesize\colorbox{orange!20}{results change}}}
+\providecommand{\legacy}{\textsf{\footnotesize\colorbox{black!8}{legacy}}}
+\lstset{basicstyle=\ttfamily\small,columns=fullflexible,keepspaces=true,
+        frame=single,framerule=0.3pt,backgroundcolor=\color{black!3},
+        breaklines=true,showstringspaces=false,aboveskip=6pt,belowskip=6pt}
+\setlist{itemsep=2pt,topsep=3pt}
+\setlength{\emergencystretch}{3em}
+
+\ifdefined\ToScaNAManual\else
+\begin{center}
+  {\LARGE\bfseries ToScaNA}\\[4pt]
+  {\large Total Scattering Neutron Analysis}\\[10pt]
+  {\Large Appendices: code audit, corrections, tests and module reference}\\[10pt]
+  {\normalsize Version 0.1.0 (branch \code{fixes/group-a}) --- November 2026}
+\end{center}
+\bigskip
+\noindent\textbf{How to read these appendices.}
+Appendix~\ref{app:audit} explains what was examined in the code, what was
+found and what was changed, with the physical reasoning and the numbers
+that justify each change. Appendix~\ref{app:tests} describes the automatic
+tests that now protect the code, and how to run them.
+Appendix~\ref{app:reference} is a module-by-module reference of the whole
+package: what each function does, its arguments and outputs, the formulas
+it implements, which files it reads or writes, and whether it was modified.
+Throughout, labels such as \st{C2} or \st{P9} refer to the identifiers of
+the audit report (\code{ToScaNA_technical_audit.md}): \st{C} for confirmed
+errors, \st{P} for possible issues. The marker \newbeh{} flags changes that
+modify numerical results with respect to the original code.
+
+\tableofcontents
+\clearpage
+\appendix
+\fi
+
+% =====================================================================
+\tsapp{Audit of the code and corrections}\label{app:audit}
+% =====================================================================
+
+\tssec{Context and method}
+
+ToScaNA (\emph{Total Scattering Neutron Analysis}) is a Python package for
+the reduction and analysis of neutron total-scattering data from the D4
+diffractometer at the ILL. Its present form is a port of a single legacy
+script, \code{legacy/lib/toscana.py}, into a package. The port was
+written ``parity first'': the docstrings repeatedly state that legacy
+behaviour, including known defects, was preserved on purpose so that new
+and old results could be compared number by number. The legacy script and
+its list of known divergences (\code{KNOWN__DIVERGENCES.md}) were not part
+of the project tree that was audited.
+
+The work was done in four stages:
+\begin{enumerate}
+  \item \textbf{Audit (inspection only).} All 52 Python files were read in
+    full (about 6\,000 lines plus the 8\,857-line isotope table). Suspected
+    problems were reproduced with small, read-only numerical experiments on
+    synthetic data, run from a scratch directory so that nothing in the
+    project or in the experimental data was modified. The findings were
+    classified as \emph{confirmed errors} (C1--C30), \emph{possible issues}
+    (P1--P21) and \emph{recommendations}.
+  \item \textbf{Version control and tests.} A git repository was created.
+    The first commit is the code exactly as received, so that every later
+    change can be inspected with \code{git diff}. A test suite (Appendix~\ref{app:tests})
+    was written \emph{before} most of the corrections: each test first
+    failed on the original code and passes after the correction.
+  \item \textbf{Corrections.} Mechanical bugs were fixed directly; changes
+    that modify physical results were made only after a decision by the
+    author of the code (density and scattering length of vanadium,
+    reference wavelength, lattice parameter of Ni, window function).
+  \item \textbf{New functionality.} Exact statistical error bars for
+    $G(r)$, $g(r)$, RDF$(r)$, $T(r)$ and $N(r)$.
+\end{enumerate}
+
+\tssec{Version history}
+
+All changes are on the git branch \code{fixes/group-a}; the branch
+\code{main} contains the first two commits only. Each commit message
+explains the change in detail (\code{git log}, \code{git show <id>}).
+
+\begin{longtable}{@{}l p{0.78\textwidth}@{}}
+\toprule
+Commit & Content \\
+\midrule\endhead
+\tn{1958d36} & Baseline: the code as received, before any change. \\
+\tn{67b3663} & Confirmed errors of the D4 reduction chain (Section~\ref{sec:reduction}). \\
+\tn{f98cf26} & Test suite (standard library only). \\
+\tn{1a9da55} & Mechanical bugs outside the reduction chain (``group A''). \\
+\tn{43354d9} & Vanadium density 6.11\,g/cm$^3$. \\
+\tn{6785d7d} & Thermal reference wavelength 1.798\,\AA; vanadium $b_\mathrm{coh}=-0.443$\,fm. \\
+\tn{337bbaa} & Isotope class renamed \code{Elemento} $\to$ \code{Element}. \\
+\tn{67d188a} & Ni lattice parameter 3.52\,\AA{} by default, user-configurable. \\
+\tn{d76b9cd} & Fourier window: none, or the standard Lorch function. \\
+\tn{0e2a14f} & Subpackages renamed \code{math}$\to$\code{numerics}, \code{io}$\to$\code{dataio}. \\
+\tn{255c508} & Physical choices: annulus volume, free cross sections, sigmoid, $Q_0$, weighted Ni fit. \\
+\tn{369e286} & Error bars for $G$, $g$, RDF, $T$ and $N$. \\
+\bottomrule
+\end{longtable}
+
+\noindent To compare any file with the original: \code{git diff 1958d36 -- numerics/fourier.py}
+(note that after commit \code{0e2a14f} the old path is \code{math/fourier.py}).
+To return to the original code entirely: \code{git checkout 1958d36}.
+
+% ---------------------------------------------------------------------
+\tssec{The data-processing chain}\label{sec:chain}
+
+The figure below summarises what the code does from raw data to
+real-space functions, and where each step lives.
+
+\begin{lstlisting}
+Raw numors (NeXus .nxs, or ILL ASCII)             dataio.acquisition
+  -> counts[9 banks x 64 cells], metadata
+Angle check |2theta_read - 2theta_requested|       getOneNumor
+Poisson errors on RAW counts  sigma = sqrt(N)      getErrorsNumor
+Dead time (non-paralysable, per cell)              dataio.corrections
+Relative efficiency  N/eps, sigma/eps              getEff
+Normalisation to monitor (or time)                 normalise
+Angles: 2theta = 2theta_lue + shift[det]
+        + 15 deg*det + 0.125 deg*cell              getAngles
+Stack numors, subtract zero angle 2theta0          getNumors
+Regroup cells onto a 2theta grid                   dataio.d4creg_outputs.getDiffA
+  -> .adat (CORRECT format), .reg (D4 format)      saveDiffAngle
+Convert to Q and rebin onto a Q grid               numerics.binning.rebin
+  -> .qdat (CORRECT format)                        saveDiffQ
+--- external program CORRECT: container, environment, absorption,
+    multiple scattering, vanadium normalisation (dataio.correct) ---
+S(Q)  ->  sine Fourier transform                   numerics.fourier.sineFT
+  -> G(r), g(r), RDF(r), T(r), N(r)  [+ errors]    dataio.saving.saveRSCF
+Optional: back-transform with low-r cut            numerics.fourier.backFT
+Ni powder calibration of lambda and 2theta0        calibration.d4nifit
+\end{lstlisting}
+
+\noindent The whole regrouping chain is driven by a parameter file read by
+\code{dataio.parameters.readParam}; the line \code{<run>} in that file
+launches \code{workflows.d4creg.d4creg}. Corrections for attenuation,
+multiple scattering and container are \emph{not} computed in ToScaNA: they
+are delegated to CORRECT, for which ToScaNA writes the input file.
+
+% ---------------------------------------------------------------------
+\tssec{Conventions, units and formulas}\label{sec:conventions}
+
+\begin{longtable}{@{}l l p{0.52\textwidth}@{}}
+\toprule
+Quantity & Unit & Notes \\
+\midrule\endhead
+Scattering angle $2\theta$ & degree & zero angle $2\theta_0$ subtracted in \code{getNumors} \\
+Momentum transfer $Q$ & \AA$^{-1}$ & $Q = \frac{4\pi}{\lambda}\sin\theta$ \\
+Distance $r$ & \AA & \\
+Wavelength $\lambda$ & \AA & \\
+Atomic number density $\rho$ & atoms/\AA$^3$ & $\rho = d\,N_A/\bar M \times 10^{-24} = 0.602214076\,d/\bar M$ \\
+Macroscopic density $d$ & g/cm$^3$ & \\
+Scattering length $b$ & fm & \\
+Cross sections $\sigma$ & barn & $1\,\mathrm{b} = 100\,\mathrm{fm}^2$; $\sigma = 4\pi|b|^2/100$ with $b$ in fm \\
+Sample dimensions & mm & volumes converted to cm$^3$ (division by 1000) \\
+CORRECT input & cm & radius $=$ diameter$/20$ \\
+Counts & per monitor & normalised to \code{norm_mon} monitor counts (default $10^6$) or \code{norm_time} seconds \\
+Thermal reference & & $v=2200$\,m/s, $\lambda_\mathrm{th}=1.798$\,\AA, $E_\mathrm{th}=25.30$\,meV \\
+\bottomrule
+\end{longtable}
+
+\paragraph{Real-space functions.} With $F(Q) = Q[S(Q)-1]$ and a window
+(modification) function $M(Q)$ that vanishes for $Q \ge Q_\mathrm{max}$,
+\code{sineFT} computes (columns of its output)
+\begin{align}
+  G(r) &= \frac{2}{\pi}\int_0^{Q_\mathrm{max}} Q\,[S(Q)-1]\,M(Q)\,\sin(Qr)\,\mathrm{d}Q
+        \;=\; 4\pi\rho r\,[g(r)-1], \label{eq:G}\\
+  g(r) &= 1 + \frac{G(r)}{4\pi\rho r} \quad (g(0) \equiv 0),\\
+  \mathrm{RDF}(r) &= 4\pi\rho r^2 g(r) = r\,G(r) + 4\pi\rho r^2,\\
+  T(r) &= 4\pi\rho r\, g(r) = G(r) + 4\pi\rho r,\\
+  N(r) &= \int_{r_0}^{r} \mathrm{RDF}(r')\,\mathrm{d}r' \qquad (r_0 = \text{first point of the $r$ grid}).
+\end{align}
+$T(r)$ is defined here without the factor $\langle b\rangle^2$ used by some
+authors. The integrals are evaluated with Simpson's rule
+(\code{scipy.integrate.simpson}) on the given grids; no FFT is used, so
+arbitrary, non-uniform grids are allowed. The back-transform \code{backFT}
+uses
+\begin{equation}
+  S(Q) = 1 + \frac{4\pi\rho}{Q}\int r\,[g(r)-1]\sin(Qr)\,\mathrm{d}r,
+  \qquad S(0) = 1 + 4\pi\rho\int r^2[g(r)-1]\,\mathrm{d}r .
+\end{equation}
+These formulas were checked analytically and numerically during the audit
+and are correct.
+
+% ---------------------------------------------------------------------
+\tssec{Corrections to the reduction chain}\label{sec:reduction}
+
+All items in this section are in commit \code{67b3663}. Before these
+corrections, the \emph{intensities} produced by the chain were correct;
+the main defects concerned the \emph{error bars}, and the robustness of
+the regrouping. The intensities of regrouped and rebinned data were
+verified to be identical to the original code (synthetic data, all
+in-range cells).
+
+\paragraph{\fixed{C2} Error of the monitor normalisation.} \newbeh{}
+\code{normalise} replaced the counts $y$ by $y_n = f\,y$, $f = N_\mathrm{norm}/N_\mathrm{mon}$,
+and only afterwards formed the relative error $e/y_n$ with the
+\emph{un-normalised} error $e$. The relative error was therefore multiplied
+by $N_\mathrm{mon}/N_\mathrm{norm}$. For a cell with $10^4$ counts, the
+relative error should be $\sqrt{10^{-4}+1/N_\mathrm{mon}}\approx 0.010$;
+the code gave 0.0033 for $N_\mathrm{mon}=10^5$ (3 times too small) and
+0.100 for $N_\mathrm{mon}=10^7$ (10 times too large). It was correct only
+when the monitor happened to equal $10^6$. Now
+\begin{equation}
+  y_n = f y, \qquad \sigma_n^2 = (f\,\sigma)^2 + \Bigl(y_n\,\frac{\sigma_{N_\mathrm{mon}}}{N_\mathrm{mon}}\Bigr)^2 .
+\end{equation}
+Cells with zero counts are flagged \code{NaN} and are therefore excluded by
+the regrouping, which is what the original code did in practice (it
+produced $0/0$).
+
+\paragraph{\fixed{C5} Poisson errors.} \newbeh{} The error was computed as
+$\sqrt{N}$ \emph{after} dead-time and efficiency corrections, i.e.\
+$\sqrt{N_\mathrm{raw}/\varepsilon}$ instead of $\sqrt{N_\mathrm{raw}}/\varepsilon$.
+Errors are now taken on raw counts and scaled by exactly the same factors
+as the counts (dead-time factor, then $1/\varepsilon$). For
+$N_\mathrm{raw}=400$ and $\varepsilon=0.8$ the error per cell is now
+$25.0$ (it was $22.4$).
+
+\paragraph{\fixed{C4} Dead-time check.} The test
+\code{if (correction.all()) > 0} only checks that no factor is exactly
+zero: when the measured rate times the dead time exceeded 1, negative
+factors were accepted and produced \emph{negative counts} (reproduced:
+$\nu\tau = 1.4$ gave $-5\times10^5$ counts). All factors must now be
+positive, otherwise a \code{ValueError} is raised. The corrected total
+detector counts were computed with the factor of cell [0,0] only; they now
+use $\sum N_\mathrm{corr}/\sum N_\mathrm{raw}$. The log message said
+``Monitor DT'' for the detector; corrected.
+
+\paragraph{\fixed{C29} Combination of errors when regrouping and rebinning.} \newbeh{}
+Both \code{getDiffA} (cells $\to$ angular grid) and \code{rebin} (angle
+$\to$ $Q$ grid) form weighted means $\bar y = \sum w_i y_i/\sum w_i$ (weights
+= overlap fraction $\times$ monitor share). The errors were averaged in the
+same way, $\sum w_i\sigma_i/\sum w_i$, so that they did not decrease when
+points were combined. The error of a weighted mean is
+\begin{equation}
+  \sigma_{\bar y} = \frac{\sqrt{\sum_i w_i^2\sigma_i^2}}{\sum_i w_i}.
+\end{equation}
+Example: ten points with $\sigma=10$ gave 10.0; now 3.16. On a synthetic
+two-numor regrouping the median error fell from 3.0 to 1.58.
+
+\paragraph{\fixed{C6} Size of the angular grid.} \code{getDiffA} sized its
+arrays with \code{int((amax-amin)/step)} but filled them with
+\code{np.arange(amin, amax, step)}, which has $\lceil(\cdot)\rceil$
+elements. Any step that does not divide the range exactly crashed
+(reproduced: \code{(1, 140, 0.3)} gave ``could not broadcast (464,) into
+(463,)''). The grid size is now taken from the grid itself.
+
+\paragraph{\fixed{C7} Cells outside the angular range.} Bin indices were
+obtained with \code{int()}, which truncates towards zero, and were not
+checked. A cell just below \code{amin} was counted in bin 0; a cell further
+below gave a \emph{negative} index, which Python interprets as counting
+from the end of the array: counts measured at $-5^\circ$ appeared near
+$135^\circ$. Cells above \code{amax} raised \code{IndexError}. Indices now
+use \code{np.floor} and out-of-range parts of a cell are discarded.
+
+\paragraph{\fixed{C8} Last $Q$ point erased.} After rebinning, points with
+$y\le0$ are masked together with the previous point; for the first point
+the ``previous'' index $-1$ is the \emph{last} point of the array, which was
+erased. Corrected.
+
+\paragraph{\fixed{C9} Width used for the $Q$ rebinning.} The angular width
+of each regrouped point was hard-coded to $0.125^\circ$ in \code{d4creg}.
+It is now the actual step of the regrouped grid (which \code{getDiffA}
+enlarges to the cell width if the requested step is smaller). The width
+in $Q$ is $\Delta Q = \frac{2\pi}{\lambda}\cos\theta\,\Delta(2\theta)\,\frac{\pi}{180}$.
+
+\paragraph{\fixed{C19} Number of bins.} \code{get_xlim} computed the number
+of bins with \code{int()} of a floating-point ratio:
+\code{get_xlim(0, 0.3, 0.1)} gave 3 bins instead of 4 because
+$0.4/0.1 = 3.9999\ldots$. A tolerance of $10^{-9}$ is now added before
+taking the floor; genuinely non-commensurate ranges keep floor semantics.
+The same floor/truncation fix was applied to \code{get_bins}.
+
+\paragraph{\fixed{C25} Parsing of the d4creg parameter file.} Lines were
+split with \code{split(" ")}, which kept the newline on the last token and
+produced empty tokens for repeated spaces. When a value was the last word
+of its line it silently became, e.g., \verb|"Nexus\n"|: the data format
+then fell back to the ASCII reader, \verb|"True\n"| disabled writing and
+plotting, and numor ranges failed their length check. Lines are now cut
+at \texttt{\#} (inline comments allowed) and split on any white space.
+
+\paragraph{\fixed{C27} Last line of input files.} Several readers removed
+the last character of each line assuming it was a newline; a final line
+without newline lost a digit (an efficiency 1.0234 became 1.023). Lines
+are now stripped. Affected: \code{getEff}, \code{getDec}, \code{read_xye}.
+
+\paragraph{\fixed{C3} Weighted sum of two data sets.} \newbeh{}
+\code{binary_sum} combined $\sqrt{w_1^2 e_1 + w_2^2 e_2}$ instead of
+$\sqrt{w_1^2 e_1^2 + w_2^2 e_2^2}$ (dimensionally wrong; $e_1=e_2=2$ gave
+2.0 instead of 2.83).
+
+% ---------------------------------------------------------------------
+\tssec{Fourier transform and real-space functions}\label{sec:fourier}
+
+\paragraph{\fixed{C1} Window function.} \newbeh{}
+The original code offered a step (truncation) and a ``Lorch'' window that
+was rescaled so that $\int_0^{Q_\mathrm{max}} M\,\mathrm{d}Q = Q_\mathrm{max}$.
+This rescaling gives $M(0) = \pi/\mathrm{Si}(\pi) = 1.696$ instead of 1
+($\mathrm{Si}$ is the sine integral), and multiplies $G(r)$ by 1.70 where
+the window is smooth. At low $r$, where $g(r)=0$ and $G(r)=-4\pi\rho r$,
+the result was $g(r) = 1 - 1.70 = -0.70$ (reproduced). After discussion, the
+rescaled version was removed. \code{sineFT(window=...)} and
+\code{getSineFT(w=...)} now accept only
+\begin{itemize}
+  \item \code{0}: no window (truncation at $Q_\mathrm{max}$);
+  \item \code{1}: the standard Lorch function
+    $M(Q) = \dfrac{\sin(\pi Q/Q_\mathrm{max})}{\pi Q/Q_\mathrm{max}}$, $M(0)=1$;
+\end{itemize}
+any other value raises \code{ValueError} (the original code treated any
+non-zero value as Lorch). The array function \code{LorchN} was replaced by
+\code{LorchArray}.
+
+\paragraph{Why the standard Lorch window preserves coordination numbers.}
+$M(Q)$ above is the Fourier transform of a box of half-width
+$\Delta = \pi/Q_\mathrm{max}$. Multiplying $F(Q)$ by $M(Q)$ is therefore
+exactly equivalent to replacing the (truncated) $G(r)$ by its running
+average over $[r-\Delta, r+\Delta]$; this is Lorch's original construction
+(1969). A running average with a kernel of unit integral, i.e.\ $M(0)=1$:
+\begin{enumerate}
+  \item conserves the total area of $G(r)$ (the rescaled version inflated
+    all areas by 1.70);
+  \item changes an integral between finite limits $[r_1, r_2]$ only through
+    edge terms of order $\frac{\Delta^2}{6}[G'(r_2) - G'(r_1)]$, which vanish
+    when the limits lie where the curve is flat (the region $g=0$ and the
+    first minimum);
+  \item has no negative lobes, unlike the kernel $\sin(Q_\mathrm{max} r)/r$
+    of plain truncation, so it does not move area by oscillation.
+\end{enumerate}
+Since $N(r)$ integrates $r\,G(r)$ rather than $G(r)$, an additional term
+$\frac{\Delta^2}{3}[G(r_2)-G(r_1)]$ appears; with $Q_\mathrm{max}=23.5$\,\AA$^{-1}$
+it is about $0.006\,\Delta G$, negligible. Exact conservation for
+\emph{arbitrary} limits is impossible with a finite $Q_\mathrm{max}$: it
+would require $M(Q)=1$ up to infinite $Q$. Limits that cut through a peak
+always lose part of its area. Numerically, on a model liquid whose exact
+coordination number is known (Appendix~\ref{sec:synthetic}):
+
+\begin{center}
+\begin{tabular}{@{}c c c c c@{}}
+\toprule
+$Q_\mathrm{max}$ (\AA$^{-1}$) & Limits (\AA) & Exact $N$ & No window & Standard Lorch \\
+\midrule
+15.0 & 0.0--3.3 & 10.498 & 10.487 & 10.498 \\
+15.0 & 2.3--3.3 & 10.498 & 10.497 & 10.490 \\
+23.5 & 0.0--3.3 & 10.498 & 10.499 & 10.498 \\
+23.5 & 2.3--3.3 & 10.498 & 10.481 & 10.502 \\
+\bottomrule
+\end{tabular}
+\end{center}
+With the rescaled window the same coordination numbers came out 4\,\% too
+high from the edge of the first shell, and 30\,\% too low from $r=0$.
+\textbf{Practical rule:} integrate from a point where $g(r)=0$ to a
+minimum. A related pitfall: on a grid produced by \code{np.arange}, the
+value \code{3.3} may be stored as 3.3000000000000003 and a mask
+\code{r <= 3.3} then drops the end point; since RDF$(3.3\,\text{\AA})\approx 14$
+atoms/\AA, this alone changes $N$ by about 1\,\%. Rounding the grid
+(\code{np.round(r, 10)}) avoids it.
+
+\paragraph{\fixed{C18} Running coordination number.} \newbeh{} The slice
+end of the running integral was computed as \code{1 + int(r/dr)}, which
+assumes that the grid starts at 0 and that the division is exact. Even on
+a grid starting at 0 in steps of 0.02\,\AA, rounding (e.g.\
+$0.58/0.02 = 28.999\ldots$) stopped the integral one point short at 16 of
+400 points, producing small steps in $N(r)$; on a grid not starting at 0,
+all values were wrong. The loop index is used now; $N(r_0)=0$.
+
+\paragraph{\fixed{C17} Back-transform.} \newbeh{} \code{backFT} divided by
+$Q$ and $r$ without protection, producing \code{NaN}/\code{inf} at
+$Q=0$ and $r=0$; the analytic limits are now used ($S(0)$ above;
+$g(0)\equiv0$ as in \code{sineFT}; $T = 4\pi\rho r g$ computed directly). Its
+running integral excluded the current point, unlike \code{sineFT}; made
+consistent. The \code{cut} argument: \code{[-1]} zeroes $g(r)$ up to its
+last negative value (previously, when $g$ was never negative, the first two
+points were zeroed anyway); otherwise any odd-length list
+$[r_0, a_1, b_1, a_2, b_2, \ldots]$ zeroes $r<r_0$ and every interval
+$(a_k, b_k)$; even lengths raise (previously lengths above 13 were silently
+ignored).
+
+\paragraph{\fixed{C20} Sine integral.} \code{getSineIntegral} integrated
+numerically on a grid that stopped at $x(1-10^{-4})$ (relative error
+$\sim10^{-4}$: $\mathrm{Si}(1)$ gave 0.945999 instead of 0.946083) and
+returned \code{NaN} for $x=0$. It now uses the exact \code{scipy.special.sici}.
+
+\paragraph{\fixed{P4} Truncation in \code{getSineFT}.} With \code{w=0} the
+argument \code{vmax} was ignored; the integral now stops at \code{vmax}
+(results unchanged when \code{vmax} is the default, the end of the data).
+
+\paragraph{\fixed{P5} Error values used as data.} \code{Lorch} and
+\code{step} returned $-999$ for $Q_\mathrm{max}\le 0$ after printing a
+message; that value was then silently used as a window. They now raise
+\code{ValueError}.
+
+% ---------------------------------------------------------------------
+\tssec{Error bars of the real-space functions}\label{sec:errors}
+
+\paragraph{Method.} Commit \code{369e286}. Because the transform is linear
+in $S(Q)$, statistical errors can be propagated exactly, without Monte
+Carlo noise. Writing the Simpson quadrature of Eq.~\eqref{eq:G} as a sum
+over the $Q$ points with weights $w_k$,
+\begin{equation}
+  G(r_j) = \sum_k W_{jk}\,[S(Q_k)-1], \qquad
+  W_{jk} = \frac{2}{\pi}\,c\;Q_k\,M(Q_k)\,\sin(Q_k r_j)\,w_k ,
+\end{equation}
+($c$ is the argument \code{constant}), and assuming uncorrelated $S(Q)$ points
+with errors $\sigma_k$,
+\begin{equation}
+  \sigma_G^2(r_j) = \sum_k W_{jk}^2\,\sigma_k^2,\qquad
+  \sigma_T = \sigma_G,\qquad
+  \sigma_\mathrm{RDF} = r\,\sigma_G,\qquad
+  \sigma_g = \frac{\sigma_G}{4\pi\rho r}\ (r>0).
+\end{equation}
+The weights $w_k$ are obtained from SciPy itself (by integrating unit
+vectors), so they are exactly those used for the values.
+
+\paragraph{The running integral needs the correlations.} Neighbouring
+$G(r)$ points are built from the same $S(Q)$ data and are strongly
+correlated; adding their variances as if they were independent would be
+badly wrong. Instead $N$ is written directly as a linear function of $S$:
+$N(r_i) = \sum_j C_{ij}\, r_j\, G(r_j) + \text{const}$, where $C$ is the
+matrix of the running Simpson rule, so that
+$\sigma_N^2(r_i) = \sum_k \bigl[(C\,\mathrm{diag}(r)\,W)_{ik}\bigr]^2 \sigma_k^2$.
+A first version used trapezoidal weights for $C$ and the Monte Carlo test
+showed errors up to 11\,\% wrong without window; the final version uses
+exactly the running Simpson rule used for $N(r)$ itself. That matrix is
+built in $O(N_r^2)$ operations (0.1\,s for 2000 points): odd-length
+prefixes are composite Simpson, extended by one three-point panel at a
+time; for even lengths SciPy adds a correction on the last interval that
+depends only on the last four points. The construction is compared with
+SciPy at run time and rebuilt directly (slowly) if a future SciPy uses a
+different rule.
+
+\paragraph{Validation.} $S(Q)$ was perturbed 1500 times with Gaussian noise
+of the stated errors, each copy was transformed with the ordinary
+\code{sineFT}, and the standard deviation of each output was compared with
+the analytic error. Ratio analytic/Monte Carlo, median over $r$ [range]:
+
+\begin{center}\small\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}l c c c c c@{}}
+\toprule
+Window & $G$ & $g$ & RDF & $T$ & $N$ \\
+\midrule
+none    & 1.005 [0.95--1.05] & 1.005 [0.95--1.05] & 1.005 [0.95--1.05] & 1.005 [0.95--1.05] & 1.003 [0.96--1.05] \\
+Lorch   & 0.998 [0.96--1.06] & 0.997 [0.96--1.06] & 0.998 [0.96--1.06] & 0.998 [0.96--1.06] & 0.998 [0.95--1.06] \\
+\bottomrule
+\end{tabular}
+\end{center}
+The spread of 5--6\,\% is the expected statistical spread of a standard
+deviation estimated from 1500 samples.
+
+\paragraph{Usage.}
+\begin{lstlisting}
+fou = sineFT(SQ, r, qmax=23.5, density=rho, window=1, with_errors=True)
+saveRSCF("sample.rscf", fou, ["Sample: ...", "Qmax = 23.5, Lorch"])
+\end{lstlisting}
+\code{SQ} must have three columns ($Q$, $S$, $\sigma_S$). The output has 11
+columns, each error beside its function:
+$r, G, \sigma_G, g, \sigma_g, \mathrm{RDF}, \sigma_\mathrm{RDF}, T, \sigma_T, N, \sigma_N$.
+The file header describes every column, its formula and units. Without
+\code{with_errors} the output keeps its 6 columns.
+
+\paragraph{Limits of these error bars.}
+\begin{itemize}
+  \item They are \emph{statistical} only. Systematic errors (normalisation,
+    density, self-scattering subtraction, truncation) are not included, and
+    usually dominate.
+  \item They assume uncorrelated $S(Q)$ points. The fractional rebinning
+    correlates neighbouring points slightly, so the errors may be somewhat
+    underestimated.
+  \item Errors at different $r$ are strongly correlated. They are correct
+    point by point, but a least-squares fit of $G(r)$ that treats them as
+    independent overstates the information contained in the data.
+\end{itemize}
+
+% ---------------------------------------------------------------------
+\tssec{Line shapes, fitting and the Ni calibration}\label{sec:fitting}
+
+\paragraph{\fixed{C11} \code{Lorentzian_error}.} The $x_0$ term contained
+\code{e_x0 * 22} (typing error for \code{e_x0**2}) and lacked one factor of
+the normalised peak $p = (\gamma/2)^2/[(x-x_0)^2+(\gamma/2)^2]$; the correct
+derivative is $\partial L/\partial x_0 = 2A(x-x_0)\,p^2/(\gamma/2)^2$.
+Reproduced error: 2.37 instead of 0.032. Now checked against numerical
+derivatives.
+
+\paragraph{\fixed{C12} \code{LorGau_error}.} It evaluated an area-normalised
+Gaussian while \code{LorGau} uses a unit-height Gaussian, so the returned
+value differed from \code{LorGau} (0.600 instead of 1.000 at $x=0$); the
+$\eta$, $\sigma$ and $\gamma$ error terms lacked the factor $f_0$. Rewritten
+with explicit derivatives.
+
+\paragraph{\fixed{C13} \code{wsum2}.} With $w_1=0$ the error was $w_2 e_2$,
+negative for $w_2<0$; now $|w_2|e_2$. With $w_2=0$ and $w_1\notin(0,1]$ it
+printed a message and then crashed; it now raises \code{ValueError}.
+
+\paragraph{\fixed{C10} Initial values of the Ni fit.} The amplitudes A2, A3,
+A4 started from \code{initial[6..8]} instead of \code{initial[7..9]}
+(shifted by one, so A1 and A2 started equal and \code{initial[9]} was never
+used). Only starting values were affected, but a non-linear fit can
+converge differently.
+
+\paragraph{\fixed{P11} Weighted Ni fit.} \newbeh{} The fit ignored the data
+errors. It now uses weights $1/\sigma$; if no valid errors exist
+(two-column files store $\sigma=-1$) it fits without weights and prints a
+warning. lmfit keeps \code{scale_covar=True}: the reported uncertainties
+are multiplied by $\sqrt{\chi^2_\nu}$ and so also account for model misfit.
+\code{setting_model_d4nifit} divides the intensities by the value in the
+valley between the second and third peaks; the errors are now divided by
+the same value.
+
+\paragraph{\fixed{P7} Ni lattice parameter.} \newbeh{} The value
+3.52024\,\AA{} was hard-coded in five places. There is now one default,
+\code{physics.crystallography.NI_LATTICE_PARAMETER = 3.52}, and every
+function that uses it accepts an argument \code{lattice}:
+\begin{lstlisting}
+setting_model_d4nifit("ni.adat", lattice=3.5238)
+fitting_model_d4nifit(nickel, limits, initial, lattice=3.5238)
+\end{lstlisting}
+In the fit the lattice parameter is a fixed lmfit parameter: the peak
+positions determine only $\lambda/a$, so $\lambda$ and $a$ cannot both be
+fitted, and the fitted $\lambda$ scales linearly with $a$ (going from
+3.52024 to 3.52 lowers $\lambda$ by 0.007\,\%). \code{showing_results_d4nifit}
+reads the value back from the fit result.
+
+\paragraph{\fixed{P20} Fitting ranges.} \code{fittingRange0},
+\code{fittingRange} and \code{fit_range} were three copies of the same code;
+they now share one helper with identical outputs.
+
+% ---------------------------------------------------------------------
+\tssec{Physical constants and sample physics}\label{sec:physics}
+
+\paragraph{\fixed{P6} Vanadium density.} \newbeh{} The defaults used
+6.51\,g/cm$^3$ (\code{setVanaInfo}) and the corresponding atomic density
+0.0769591\,atoms/\AA$^3$ (\code{setSampleInfo}), typed separately. Both now
+derive from one constant, \code{VANADIUM_DENSITY_GCC = 6.11}, giving
+0.0722305\,atoms/\AA$^3$. The default sample/vanadium density ratio
+\code{DenRatioSV} increases by 6.5\,\%.
+
+\paragraph{\fixed{C16} Vanadium scattering length.} \newbeh{} The isotope
+table had $b_\mathrm{coh}=-0.443$\,fm but $\sigma_\mathrm{coh}=0.01838$\,b,
+which corresponds to $-0.3824$\,fm; \code{setVanaInfo} used $-0.3824$\,fm.
+The value $-0.443$\,fm was adopted everywhere and the cross sections now
+follow from it: $\sigma_\mathrm{coh} = 4\pi(0.443)^2/100 = 0.02466$\,b and
+$\sigma_\mathrm{sca} = \sigma_\mathrm{coh}+\sigma_\mathrm{inc} = 5.10466$\,b
+(were 0.01838 and 5.09838\,b). $\sigma_\mathrm{inc}=5.08$\,b and
+$\sigma_\mathrm{abs}=5.08$\,b are unchanged, so the vanadium normalisation
+changes very little ($\sigma_\mathrm{sca}$ $+0.12$\,\%). A test checks that
+the defaults of \code{setVanaInfo} equal the table values.
+
+\paragraph{\fixed{C30} Thermal reference wavelength.} \newbeh{} Tabulated
+absorption cross sections refer to neutrons of 2200\,m/s, i.e.\
+$\lambda = h/(m_n v) = 1.798$\,\AA{} and $E = 81.8042/\lambda^2 = 25.30$\,meV.
+Three different values were in use: 1.8089\,\AA{} (\code{getAbsXS},
+$\sigma_\mathrm{abs}$ 0.6\,\% too small), 1.8\,\AA{} (\code{setSampleInfo})
+and 25.3\,meV (\code{scattering_probability}). All now derive from
+\code{physics.properties.THERMAL_WAVELENGTH = 1.798} and
+\code{THERMAL_ENERGY_MEV}; absorption follows the $1/v$ law
+$\sigma_\mathrm{abs}(\lambda) = \sigma_\mathrm{abs}^\mathrm{th}\,\lambda/1.798$.
+
+\paragraph{\fixed{C14} Volume of annular samples.} \newbeh{}
+\code{Measurement} computed $\pi h (r_o-r_i)^2$ instead of
+$\pi h (r_o^2-r_i^2)$. Solid cylinders ($r_i=0$) are unaffected; for a
+4/6\,mm annulus the volume was 5 times too small, and the packing fraction
+5 times too large.
+
+\paragraph{\fixed{P9} Free-atom cross sections.} \newbeh{} A bound nucleus
+of mass ratio $A = m/m_n$ has a free cross section
+$\sigma_\mathrm{free} = \sigma_\mathrm{bound}\,[A/(A+1)]^2$. For a mixture
+this factor must be applied element by element,
+\begin{equation}
+  \sigma_\mathrm{free} = \sum_i c_i\,\sigma_i\left(\frac{A_i}{A_i+1}\right)^2 ,
+\end{equation}
+whereas the code applied it once with the mean mass. The mean mass hides
+how light hydrogen is:
+
+\begin{center}
+\begin{tabular}{@{}l r r r@{}}
+\toprule
+Sample & Per element (b) & Mean mass (old, b) & Change \\
+\midrule
+H$_2$O & 14.908 & 41.116 & $-63.7$\,\% \\
+D$_2$O & 3.508 & 4.907 & $-28.5$\,\% \\
+SiO$_2$ & 3.170 & 3.212 & $-1.3$\,\% \\
+Ni & 17.880 & 17.880 & 0 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Applies to \code{Measurement.free} and to \code{FreeCohXS},
+\code{FreeIncXS}, \code{FreeScaXS} of \code{setSampleInfo}. Both use
+\code{getMassNumber} (neutron mass 1.0086649\,u); previously the isotope
+table value 1.00866\,u was also used.
+
+\paragraph{\fixed{C26} \code{sigmoidal}.} \newbeh{} The function returned
+$\delta\,\mathrm{lowQ} + (1-\delta)\,\mathrm{highQ}$ with
+$\delta = e^{(Q-Q_0)/\mathrm{d}Q}$: unbounded, with negative weights above
+$Q_0$, and running from highQ to lowQ, the opposite of what the parameter
+names state. It is now the logistic step
+\begin{equation}
+  f(Q) = \frac{\mathrm{lowQ} + \mathrm{highQ}\,\delta}{1+\delta},\qquad
+  f(0)\approx\mathrm{lowQ},\ f(\infty) = \mathrm{highQ},\ f(Q_0) = \tfrac12(\mathrm{lowQ}+\mathrm{highQ}),
+\end{equation}
+computed with \code{scipy.special.expit} so that large $|Q-Q_0|/\mathrm{d}Q$
+cannot overflow. This is the same shape as \code{models.scattering.inelastic}
+(with $\mathrm{highQ} = \mathrm{lowQ}\,[A/(A+1)]^2$). \code{siglin}
+ignored its argument \code{a1}; it is now $\texttt{sigmoidal}(Q) + a_1 Q$.
+\emph{This interpretation of \code{a1} should be confirmed by the author.}
+
+\paragraph{\fixed{P21} One default transition.} \code{inelastic} used
+$Q_0=7.0$\,\AA$^{-1}$ and \code{vanaQdep} 7.4\,\AA$^{-1}$. One pair of
+defaults, \code{SIGMOID_Q0 = 7.0} and \code{SIGMOID_DQ = 2.4}
+(\code{numerics.line_shapes}), now serves \code{sigmoidal}, \code{siglin},
+\code{inelastic} and \code{vanaQdep} (effect on \code{vanaQdep}
+$\le 0.16$\,\%).
+
+\paragraph{\fixed{C15} Bound cross sections of \code{Element}.} The
+attributes \code{scoh_bound} and \code{sinc_bound} were $4\pi|b|^2$ in fm$^2$
+but labelled barns (100 times too large: Ni gave 1333 instead of 13.3).
+Divided by 100. They were not used elsewhere in the package.
+
+% ---------------------------------------------------------------------
+\tssec{Structure and robustness of the code}\label{sec:structure}
+
+\paragraph{\fixed{C21} Names that hid the standard library.} The
+subpackages \code{math/} and \code{io/} have the names of standard Python
+modules. When Python was started in the project directory (for example a
+notebook opened there), \code{import math} found the project folder
+instead; \code{import lmfit} failed with ``partially initialized module
+`math' has no attribute `floor'''. They were renamed (with \code{git mv},
+keeping their history):
+\begin{center}
+\code{toscana.math} $\to$ \code{toscana.numerics} \qquad
+\code{toscana.io} $\to$ \code{toscana.dataio}
+\end{center}
+The old dotted names remain importable through a small import hook
+(\code{_aliases.py}) and emit a \code{DeprecationWarning}; they return the
+\emph{same} module objects (an earlier version of the hook loaded a second
+copy of each module, which a test detected). No file or folder of the
+project now has the name of a standard-library module, and a test checks
+this against \code{sys.stdlib_module_names}.
+
+\paragraph{English naming.} The isotope class \code{Elemento} is now
+\code{Element}. \code{Elemento} and \code{elemento} remain available as
+deprecated aliases. Other Spanish names in the same module
+(\code{NOMBRES}, local variables) were not changed.
+
+\paragraph{Other fixes.}
+\begin{itemize}
+  \item \fixed{C22} \code{DataXYE} crashed on files without any point in
+    $[5,40]$ (the range of its automatic peak search), e.g.\ $r$-space
+    files; it saved figures \emph{after} \code{plt.show()}, which gives
+    empty images with interactive back-ends.
+  \item \fixed{P15} An unknown isotope name now raises \code{ValueError}
+    instead of returning a half-built object.
+  \item \fixed{P13} \code{Measurement.showTable} replaced \code{sys.stdout}
+    with an unclosed file and then restored \code{sys.__stdout__}, which
+    broke Jupyter output; it now uses \code{contextlib.redirect_stdout}.
+  \item \fixed{C23} Characters such as \AA, $^\circ$ and $\pm$ were stored
+    doubly encoded (\AA{} appeared as two wrong characters); repaired. \fixed{C24} The \code{.reg}
+    header gave the wavelength in degrees; now \AA.
+  \item \st{P19} The audit claimed that \code{smooth_curve} had an
+    asymmetric window; this was wrong (even sizes become the next odd
+    size). Only its documentation was completed.
+\end{itemize}
+
+% ---------------------------------------------------------------------
+\tssec{What changes for the user}\label{sec:migration}
+
+\begin{longtable}{@{}p{0.36\textwidth} p{0.58\textwidth}@{}}
+\toprule
+Before & Now \\
+\midrule\endhead
+\code{from toscana.math...}, \code{toscana.io...} & \code{toscana.numerics...}, \code{toscana.dataio...} (old names work, with a warning) \\
+\code{Elemento("Ni")} & \code{Element("Ni")} (old name works, with a warning) \\
+\code{LorchN(Q, Qmax)} & removed; \code{LorchArray(Q, Qmax)} is the standard Lorch \\
+\code{sineFT(..., window=1)} rescaled Lorch & standard Lorch, $M(0)=1$; values other than 0, 1 raise \\
+\code{sineFT} 6 columns & unchanged; \code{with_errors=True} gives 11 columns \\
+\code{saveRSCF} 6 columns, no header & 6 or 11 columns, header describing each column \\
+Error bars of \code{.adat}, \code{.reg}, \code{.qdat} & smaller and statistically correct (C2, C5, C29) \\
+$N(r)$ & correct at every point (C18) \\
+\code{Element.scoh_bound} & in barns (100 times smaller) \\
+Vanadium defaults & 6.11\,g/cm$^3$, $b=-0.443$\,fm, $\sigma_\mathrm{coh}=0.02466$\,b \\
+$\sigma_\mathrm{abs}(\lambda)$ & $\propto\lambda/1.798$ \\
+Free cross sections & per element (large change for H, D) \\
+\tn{sigmoidal} & a true logistic step \\
+Ni calibration & weighted fit, lattice 3.52\,\AA{} by default, \code{lattice=} argument \\
+Silent prints on bad input & \code{ValueError} (unknown isotope, invalid \code{cut}, $Q_\mathrm{max}\le0$, invalid window or weights, negative dead-time factor) \\
+\bottomrule
+\end{longtable}
+
+% ---------------------------------------------------------------------
+\tssec{Open items}\label{sec:open}
+
+\paragraph{Need data or instrument knowledge.}
+\begin{itemize}
+  \item \st{P1} Angle labels of \code{getDiffA}: the angle written for a bin
+    is its lower edge, while a cell centred in the bin contributes fully to
+    it, i.e.\ a shift of half a step ($0.0625^\circ$ for $0.125^\circ$). It
+    is absorbed by the zero angle if the Ni calibration was regrouped in the
+    same way; to be confirmed with a real Ni run.
+  \item \st{P2} The dead time is applied to the rate of each \emph{cell};
+    for position-sensitive banks it is usually governed by the rate of the
+    whole bank or of its electronics.
+  \item \st{P3} Data are binned twice (cells $\to 2\theta$ $\to Q$), which
+    adds broadening and correlations; a direct cells $\to Q$ rebinning
+    would avoid one step.
+  \item \st{P8} The reactor power is fixed to 1\,MW for NeXus files (only
+    the logged rates per MW are affected); the NeXus field is needed.
+  \item \st{P16} The ASCII numor reader assumes 10 values per line and a
+    block of 11 lines per detector; a sample file is needed to check the
+    case \code{ncell} multiple of 10.
+\end{itemize}
+
+\paragraph{Found while writing this appendix (not yet changed).}
+\begin{itemize}
+  \item In \code{getOneNumor}, the $Q$ column of each numor (used in the
+    per-numor \code{.cdat} files) is computed from the angles \emph{before}
+    the zero angle is subtracted; the main \code{.qdat} output is computed
+    from corrected angles and is not affected.
+  \item With the default settings the log file is renamed to
+    \code{d4creg.log.log} (the extension is added twice).
+  \item \code{generate_com} still runs the placeholder command
+    \code{executable_name arg1} and writes \code{output.txt} in the current
+    directory.
+  \item \code{saveCORRECT} writes the keyword \code{wavelenght}; to be
+    checked against what CORRECT accepts.
+\end{itemize}
+
+\paragraph{Engineering.} A \code{pyproject.toml} so that the package
+installs as \code{toscana}; logging instead of \code{print}; output and log
+paths as explicit arguments instead of fixed relative paths
+(\code{../logfiles}, \code{../regdata}); vectorised transforms and binning;
+Monte Carlo propagation of \emph{systematic} parameters ($\lambda$,
+$2\theta_0$, density, normalisation); \st{P10} keeping the sign of
+$\langle b\rangle$ in \code{Measurement.bcoh}.
+% =====================================================================
+\tsapp{The test suite}\label{app:tests}
+% =====================================================================
+
+\tssec{Purpose and principles}
+
+The tests are small programs that call ToScaNA functions on inputs whose
+correct answer is known, and compare. They serve three purposes: they
+\emph{document} what each function is expected to do; they \emph{prove}
+that the corrections of Appendix~\ref{app:audit} work; and they
+\emph{protect} the code: after any future change, running them shows
+immediately whether something that used to work is broken.
+
+The suite follows a few rules.
+\begin{itemize}
+  \item \textbf{Known answers.} Each test compares with an analytic result
+    (Bragg's law, an exact integral, a derivative), with an independent
+    calculation (finite differences, a Monte Carlo simulation, a direct
+    SciPy call), or with an invariant (constant input gives constant
+    output; values must not change when only errors are requested).
+  \item \textbf{Synthetic data only.} No experimental file is read or
+    written. Functions that write files (logs, \code{.adat}, figures) are
+    run inside a temporary directory that is deleted afterwards. Functions
+    that read raw numors are given a fake reader.
+  \item \textbf{Written before the fix.} For every correction, the test was
+    written first and seen to fail on the original code (19 tests failed
+    for the ``group A'' bugs, for example), then the code was corrected.
+  \item \textbf{Standard library only.} The suite uses Python's
+    \code{unittest}, so nothing needs to be installed. It can also be run
+    by \code{pytest} if available. One test uses lmfit and is skipped
+    automatically when lmfit is not installed.
+\end{itemize}
+
+\tssec{Running the tests}
+
+From the project directory (or any other directory):
+\begin{lstlisting}
+python tests/run_tests.py                  # all tests (about 35 s)
+python tests/run_tests.py -v               # one line per test
+python tests/run_tests.py test_fourier     # one file
+python tests/run_tests.py test_fourier.TestBackFT.test_q_zero_limit
+\end{lstlisting}
+The last line of the output is \code{OK} when every test passes. Otherwise
+each failure is listed with the name of the test, the line of the
+comparison that failed and both values, for example
+\begin{lstlisting}
+FAIL: test_bin_count (test_reduction.TestRebin.test_bin_count)
+AssertionError: 3 != 4
+\end{lstlisting}
+which reads: the test expected 4 bins and the function returned 3. About
+30 of the 35 seconds are spent in the Monte Carlo validation of the error
+bars.
+
+\tssec{Organisation of the \texttt{tests} folder}
+
+\begin{longtable}{@{}l p{0.64\textwidth}@{}}
+\toprule
+File & Role \\
+\midrule\endhead
+\code{run_tests.py} & Runs the suite (discovers every \code{test_*.py}). \\
+\code{_pkg.py} & Makes the project importable as \code{toscana} without installing it: the directory is called \code{ToScaNA-pilot}, so the package is registered under the name \code{toscana} with \code{importlib}. It also keeps the project directory off \code{sys.path} and disables the writing of \code{.pyc} files into the project. \\
+\code{helpers.py} & Shared tools: \code{quiet(f, ...)} calls a function with its printed output suppressed; \code{in_tempdir()} runs a block of code in a fresh temporary directory \code{<tmp>/work} (so that the relative paths \code{../logfiles} and \code{../regdata} used by the code land in \code{<tmp>}); \code{synthetic_liquid()} builds the model liquid described below. \\
+\code{test_physics.py} & Unit conversions, crystallography, densities, cross sections, thermal reference, vanadium defaults, scattering models. \\
+\code{test_reduction.py} & The D4 reduction chain, including an end-to-end run. \\
+\code{test_fourier.py} & Fourier transforms, windows, coordination numbers, back-transform. \\
+\code{test_fourier_errors.py} & Error bars of the real-space functions and the output file. \\
+\code{test_line_shapes_ops.py} & Line shapes with errors, weighted sums, fitting ranges. \\
+\code{test_physical_choices.py} & Annulus volume, free cross sections, sigmoid, $Q_0$, weighted Ni fit. \\
+\code{test_misc.py} & Isotopes, data files, Ni calibration, \code{showTable}, project layout, text encoding. \\
+\bottomrule
+\end{longtable}
+
+\tssec{The synthetic liquid}\label{sec:synthetic}
+
+Several tests need an $S(Q)$ whose real-space functions are known exactly.
+\code{helpers.synthetic_liquid(rho=0.1)} builds one from a model pair
+correlation function on $r\in[0,30)$\,\AA{} in steps of 0.005\,\AA:
+\begin{equation}
+  g(r) = \begin{cases} 0 & r < 2.5\ \text{\AA} \\[2pt]
+   1 + 0.8\,\exp\!\bigl[-(r-2.8)^2/0.02\bigr] & r \ge 2.5\ \text{\AA} \end{cases}
+\end{equation}
+a hard core of 2.5\,\AA{} and one coordination shell centred at 2.8\,\AA{}
+(Gaussian of standard deviation 0.1\,\AA). Its structure factor is
+computed on $Q\in[0,30)$\,\AA$^{-1}$ in steps of 0.01\,\AA$^{-1}$ by direct
+integration, $S(Q) = 1 + \frac{4\pi\rho}{Q}\int r[g(r)-1]\sin(Qr)\,\mathrm{d}r$,
+with $S(0)$ set equal to the first point. The function returns the
+two-column array $(Q, S)$ and the exact $r$ and $g$, from which exact
+coordination numbers are obtained. For the error-bar tests an error column
+$\sigma(Q) = 0.01\,(1+Q/10)$ is added, growing with $Q$ as in real data.
+
+\tssec{What each test checks}
+
+In the tables below, the test name is given without its \code{test_}
+prefix, grouped by test class.
+
+\tssub*{\texttt{test\_physics.py}}
+\begin{longtable}{@{}p{0.36\textwidth} p{0.58\textwidth}@{}}
+\toprule Test & What is checked \\ \midrule\endhead
+\multicolumn{2}{@{}l}{\textit{TestConversions}} \\
+\tn{round\_\allowbreak{}trip} & \code{q2ang(ang2q(x))} returns $x$ for $2\theta = 1\ldots140^\circ$. \\
+\tn{known\_\allowbreak{}value} & $2\theta=60^\circ$, $\lambda=0.5$\,\AA{} gives $Q = 4\pi$. \\
+\tn{bad\_\allowbreak{}wavelength} & $\lambda=0$ raises \code{ValueError}. \\
+\multicolumn{2}{@{}l}{\textit{TestCrystallography}} \\
+\tn{ni\_\allowbreak{}reflections\_\allowbreak{}match\_\allowbreak{}bragg} & The ten first fcc reflections equal $2\arcsin(\lambda\sqrt{h^2+k^2+l^2}/2a)$ for (111)\ldots(333). \\
+\tn{default\_\allowbreak{}lattice\_\allowbreak{}is\_\allowbreak{}ni\_\allowbreak{}3\_\allowbreak{}52} & Default lattice parameter is 3.52\,\AA. \\
+\tn{zero\_\allowbreak{}angle\_\allowbreak{}shift} & A zero angle shifts all reflections by the same amount. \\
+\multicolumn{2}{@{}l}{\textit{TestProperties}} \\
+\tn{water\_\allowbreak{}atomic\_\allowbreak{}density} & 1\,g/cm$^3$ and 6\,g/mol/atom give $0.602214076/6$ atoms/\AA$^3$. \\
+\tn{cylinder\_\allowbreak{}volume} & $\pi r^2 h$. \\
+\tn{free\_\allowbreak{}cross\_\allowbreak{}section} & $\sigma[A/(A+1)]^2$. \\
+\tn{absorption\_\allowbreak{}reference\_\allowbreak{}wavelength} & $\sigma_\mathrm{abs}(1.798\,\text{\AA})$ equals the tabulated value; $1/v$ scaling. \\
+\tn{thermal\_\allowbreak{}references\_\allowbreak{}consistent} & 1.798\,\AA{} $\leftrightarrow$ 25.30\,meV $\leftrightarrow$ 2200\,m/s; the energy route (\code{scattering_probability}) and the wavelength route (\code{getAbsXS}) give the same absorption. \\
+\multicolumn{2}{@{}l}{\textit{TestVanadiumStandard}} \\
+\tn{default\_\allowbreak{}density\_\allowbreak{}and\_\allowbreak{}consistency} & Vanadium density 6.11\,g/cm$^3$; the atomic density default of \code{setSampleInfo} equals that of \code{setVanaInfo}. \\
+\multicolumn{2}{@{}l}{\textit{TestModels}} \\
+\tn{inelastic\_\allowbreak{}limits} & \code{inelastic} tends to lowQ at low $Q$ and to lowQ$\,[A/(A+1)]^2$ at high $Q$. \\
+\tn{xs\_\allowbreak{}model\_\allowbreak{}high\_\allowbreak{}energy\_\allowbreak{}limit} & Epithermal cross section tends to the free value at high energy. \\
+\bottomrule
+\end{longtable}
+
+\tssub*{\texttt{test\_reduction.py}}
+\begin{longtable}{@{}p{0.36\textwidth} p{0.58\textwidth}@{}}
+\toprule Test & What is checked \\ \midrule\endhead
+\multicolumn{2}{@{}l}{\textit{TestCorrections}} \\
+\tn{binary\_\allowbreak{}sum\_\allowbreak{}variances} & $10\pm2$ minus $5\pm2$ gives $5\pm\sqrt8$ (C3). \\
+\tn{normalise\_\allowbreak{}relative\_\allowbreak{}error\_\allowbreak{}independent\_\allowbreak{}of\_\allowbreak{}monitor} & For monitors $10^5$, $10^6$, $10^7$ the relative error is $\sqrt{1/N+1/N_\mathrm{mon}}$ (C2). \\
+\tn{normalise\_\allowbreak{}zero\_\allowbreak{}counts\_\allowbreak{}flagged} & A cell with zero counts becomes \code{NaN}. \\
+\tn{dead\_\allowbreak{}time} & $\nu\tau>1$ raises; corrected counts $=N/(1-N\tau/t)$; total = sum of corrected cells (C4). \\
+\tn{efficiency\_\allowbreak{}file\_\allowbreak{}without\_\allowbreak{}final\_\allowbreak{}newline} & The last value of an efficiency file is read intact (C27). \\
+\tn{numor\_\allowbreak{}list\_\allowbreak{}expansion} & \code{"000020-000022"} expands to three numors; a reversed range raises. \\
+\multicolumn{2}{@{}l}{\textit{TestOneNumor}} \\
+\tn{poisson\_\allowbreak{}errors\_\allowbreak{}from\_\allowbreak{}raw\_\allowbreak{}counts} & With a fake NeXus reader (400 counts per cell, efficiency 0.8): counts 500, error $\sqrt{(20/0.8)^2 + (500\times10^{-3})^2}$, i.e.\ Poisson on raw counts plus monitor statistics (C5). \\
+\multicolumn{2}{@{}l}{\textit{TestGetDiffA}} (two synthetic numors of 576 cells) \\
+\tn{constant\_\allowbreak{}input\_\allowbreak{}gives\_\allowbreak{}constant\_\allowbreak{}output} & Constant counts give the same constant on the regrouped grid. \\
+\tn{errors\_\allowbreak{}are\_\allowbreak{}combined\_\allowbreak{}not\_\allowbreak{}averaged} & Combined errors never exceed the input error and their median is clearly smaller (C29). \\
+\tn{non\_\allowbreak{}commensurate\_\allowbreak{}step} & Step $0.3^\circ$ on $[1,140)$ works; the grid has the length of \code{np.arange} (C6). \\
+\tn{out\_\allowbreak{}of\_\allowbreak{}range\_\allowbreak{}cells\_\allowbreak{}are\_\allowbreak{}dropped} & Cells at $-5^\circ$ and $200^\circ$ do not appear anywhere (C7). \\
+\multicolumn{2}{@{}l}{\textit{TestRebin}} \\
+\tn{bin\_\allowbreak{}count} & $[0,0.3]$ step 0.1 gives 4 bins; $[0,0.25]$ gives 3 (C19). \\
+\tn{error\_\allowbreak{}of\_\allowbreak{}mean} & Ten points of $100\pm10$ per bin give $100\pm10/\sqrt{10}$ (C29). \\
+\multicolumn{2}{@{}l}{\textit{TestWorkflow}} \\
+\tn{read\_\allowbreak{}param\_\allowbreak{}and\_\allowbreak{}d4creg\_\allowbreak{}end\_\allowbreak{}to\_\allowbreak{}end} & A parameter file (with an inline comment and values at the end of lines) is read by \code{readParam}; its \code{<run>} line executes the whole d4creg chain on four fake numors; \code{.adat} and \code{.qdat} are written, start at the requested $Q$ and contain only finite values (C25, C8). \\
+\bottomrule
+\end{longtable}
+
+\tssub*{\texttt{test\_fourier.py}}
+\begin{longtable}{@{}p{0.36\textwidth} p{0.58\textwidth}@{}}
+\toprule Test & What is checked \\ \midrule\endhead
+\multicolumn{2}{@{}l}{\textit{TestSineFT}} (synthetic liquid, $Q_\mathrm{max}=25$, $r$ step 0.02\,\AA) \\
+\tn{column\_\allowbreak{}relations} & $g = 1+G/4\pi\rho r$, RDF $=4\pi\rho r^2 g$, $T = 4\pi\rho r g$. \\
+\tn{low\_\allowbreak{}r\_\allowbreak{}limit} & No window: $|g(r)| < 0.02$ for $0.5<r<1.5$\,\AA. \\
+\tn{lorch\_\allowbreak{}low\_\allowbreak{}r\_\allowbreak{}limit} & Same with the Lorch window (C1; it was $-0.70$). \\
+\tn{coordination\_\allowbreak{}number} & First-shell $N$ within 5\,\% of the exact value. \\
+\tn{running\_\allowbreak{}integral\_\allowbreak{}from\_\allowbreak{}zero} & $N(r_i)$ equals a direct Simpson integral up to $r_i$ (C18). \\
+\tn{running\_\allowbreak{}integral\_\allowbreak{}grid\_\allowbreak{}not\_\allowbreak{}starting\_\allowbreak{}at\_\allowbreak{}zero} & Same on a grid starting at 1\,\AA; $N(r_0)=0$. \\
+\tn{invalid\_\allowbreak{}window\_\allowbreak{}raises} & \code{window=2} raises. \\
+\multicolumn{2}{@{}l}{\textit{TestCoordinationNumbers}} \\
+\tn{lorch\_\allowbreak{}conserves\_\allowbreak{}coordination\_\allowbreak{}number} & For $Q_\mathrm{max}=15$ and 23.5\,\AA$^{-1}$, and limits 0--3.3 and 2.3--3.3\,\AA, $N$ with the Lorch window agrees within 0.5\,\% with the exact value and with the no-window value (the property discussed in Section~\ref{sec:fourier}). \\
+\multicolumn{2}{@{}l}{\textit{TestBackFT}} \\
+\tn{all\_\allowbreak{}outputs\_\allowbreak{}finite} & No \code{NaN}/\code{inf} although the grids contain $Q=0$ and $r=0$ (C17). \\
+\tn{q\_\allowbreak{}zero\_\allowbreak{}limit} & $S(0) = 1+4\pi\rho\int r^2(g-1)\,\mathrm{d}r$, continuous with the next point. \\
+\tn{r\_\allowbreak{}relations} & $g(0)=0$; $T$, RDF consistent with $g$; running integral includes the current point. \\
+\tn{auto\_\allowbreak{}cut\_\allowbreak{}without\_\allowbreak{}negative\_\allowbreak{}values\_\allowbreak{}cuts\_\allowbreak{}nothing} & \code{cut=[-1]} on a $g(r)$ that is never negative cuts nothing. \\
+\tn{cut\_\allowbreak{}intervals} & A 17-value cut list works; an even-length list raises. \\
+\multicolumn{2}{@{}l}{\textit{TestSineHelpers}} \\
+\tn{sine\_\allowbreak{}integral} & \code{getSineIntegral} equals \code{scipy.special.sici} to $10^{-10}$; $\mathrm{Si}(0)=0$ (C20). \\
+\tn{get\_\allowbreak{}sine\_\allowbreak{}ft\_\allowbreak{}vmax\_\allowbreak{}truncates} & \code{vmax} truncates the integral; default unchanged (P4). \\
+\tn{windows\_\allowbreak{}reject\_\allowbreak{}bad\_\allowbreak{}qmax} & $Q_\mathrm{max}\le 0$ raises (P5). \\
+\tn{lorch\_\allowbreak{}shape} & $M(0)=1$, $M(Q_\mathrm{max}/2)=2/\pi$, $M(Q_\mathrm{max})=0$. \\
+\tn{lorch\_\allowbreak{}array\_\allowbreak{}is\_\allowbreak{}standard\_\allowbreak{}lorch} & \code{LorchArray} equals the scalar \code{Lorch} everywhere. \\
+\tn{get\_\allowbreak{}sine\_\allowbreak{}ft\_\allowbreak{}lorch} & \code{getSineFT(w=1)} equals a direct Simpson integral with the Lorch window; \code{w=2} raises. \\
+\bottomrule
+\end{longtable}
+
+\tssub*{\texttt{test\_fourier\_errors.py}}
+\begin{longtable}{@{}p{0.36\textwidth} p{0.58\textwidth}@{}}
+\toprule Test & What is checked \\ \midrule\endhead
+\multicolumn{2}{@{}l}{\textit{TestErrorColumns}} \\
+\tn{values\_\allowbreak{}identical\_\allowbreak{}to\_\allowbreak{}plain\_\allowbreak{}transform} & Requesting errors does not change the values (bit-identical), both windows. \\
+\tn{error\_\allowbreak{}relations} & $\sigma_g=\sigma_G/4\pi\rho r$, $\sigma_\mathrm{RDF}=r\sigma_G$, $\sigma_T=\sigma_G$; $\sigma_N(r_0)=0$ and $\sigma_N$ increases with $r$. \\
+\tn{missing\_\allowbreak{}error\_\allowbreak{}column\_\allowbreak{}raises} & Two-column input with \code{with_errors=True} raises. \\
+\tn{errors\_\allowbreak{}scale\_\allowbreak{}linearly} & Doubling $\sigma_S$ doubles every error. \\
+\multicolumn{2}{@{}l}{\textit{TestRunningSimpsonMatrix}} \\
+\tn{matches\_\allowbreak{}scipy\_\allowbreak{}on\_\allowbreak{}any\_\allowbreak{}grid} & The fast running-Simpson matrix reproduces SciPy on uniform, offset, random non-uniform and two-point grids to $10^{-12}$. \\
+\multicolumn{2}{@{}l}{\textit{TestAgainstMonteCarlo}} \\
+\tn{analytic\_\allowbreak{}errors\_\allowbreak{}match\_\allowbreak{}monte\_\allowbreak{}carlo} & 1500 noisy copies of $S(Q)$ are transformed; for $G$, $g$, RDF, $T$, $N$ and both windows the analytic error agrees with the Monte Carlo standard deviation within 8\,\% at every $r$ and within 2\,\% on average (the statistical precision of the Monte Carlo is about 1.8\,\%). \\
+\multicolumn{2}{@{}l}{\textit{TestSaveRSCF}} \\
+\tn{file\_\allowbreak{}with\_\allowbreak{}errors} & The 11-column file reloads with \code{np.loadtxt} to the precision written; the header contains the user heading, all 11 column names in order, and the description of the errors. \\
+\tn{file\_\allowbreak{}without\_\allowbreak{}errors\_\allowbreak{}keeps\_\allowbreak{}six\_\allowbreak{}columns} & Without errors the file has 6 columns. \\
+\tn{wrong\_\allowbreak{}shape\_\allowbreak{}raises} & An array with 5 columns raises. \\
+\bottomrule
+\end{longtable}
+
+\tssub*{\texttt{test\_line\_shapes\_ops.py}}
+\begin{longtable}{@{}p{0.36\textwidth} p{0.58\textwidth}@{}}
+\toprule Test & What is checked \\ \midrule\endhead
+\multicolumn{2}{@{}l}{\textit{TestLineShapeErrors}} (errors compared with central finite differences, $10^{-5}$) \\
+\tn{lorentzian\_\allowbreak{}error} & Value equals \code{Lorentzian}; error equals the propagated error (C11). \\
+\tn{gaussian\_\allowbreak{}error} & Same for \code{Gaussian_error} (correct in the original code). \\
+\tn{lorgau\_\allowbreak{}error} & Same for \code{LorGau_error} versus \code{LorGau} (C12). \\
+\multicolumn{2}{@{}l}{\textit{TestWsum2}} \\
+\tn{general\_\allowbreak{}weights} & $w_1 y_1 + w_2 y_2$ with $\sqrt{w_1^2e_1^2+w_2^2e_2^2}$. \\
+\tn{negative\_\allowbreak{}single\_\allowbreak{}weight\_\allowbreak{}gives\_\allowbreak{}positive\_\allowbreak{}error} & $w_1=0$, $w_2=-1$: error $e_2$ (C13). \\
+\tn{inverse\_\allowbreak{}variance\_\allowbreak{}weighting} & $w_1=w_2=0$: weights $e_2^2/(e_1^2+e_2^2)$, error $e_1e_2/\sqrt{e_1^2+e_2^2}$. \\
+\tn{invalid\_\allowbreak{}mixing\_\allowbreak{}weight\_\allowbreak{}raises} & $w_2=0$, $w_1=2$ raises (C13). \\
+\multicolumn{2}{@{}l}{\textit{TestFittingRanges}} \\
+\tn{three\_\allowbreak{}variants\_\allowbreak{}agree} & \code{fittingRange0}, \code{fittingRange}, \code{fit_range} select the same points as a direct mask (P20). \\
+\bottomrule
+\end{longtable}
+
+\tssub*{\texttt{test\_physical\_choices.py}}
+\begin{longtable}{@{}p{0.36\textwidth} p{0.58\textwidth}@{}}
+\toprule Test & What is checked \\ \midrule\endhead
+\multicolumn{2}{@{}l}{\textit{TestMeasurement}} (a complete \code{Measurement} of water built from a minimal parameter set) \\
+\tn{annulus\_\allowbreak{}volume} & 4/6\,mm annulus, 50\,mm: $\pi h(r_o^2-r_i^2)$ (C14). \\
+\tn{solid\_\allowbreak{}cylinder\_\allowbreak{}volume\_\allowbreak{}unchanged} & Solid cylinder: $\pi h r_o^2$. \\
+\tn{free\_\allowbreak{}cross\_\allowbreak{}section\_\allowbreak{}per\_\allowbreak{}element} & $\sigma_\mathrm{free}=\sum c_i\sigma_i[A_i/(A_i+1)]^2$; for water it is less than half the old mean-mass value (P9). \\
+\multicolumn{2}{@{}l}{\textit{TestSetSampleInfo}} \\
+\tn{free\_\allowbreak{}cross\_\allowbreak{}sections\_\allowbreak{}per\_\allowbreak{}element} & Same formula for the coherent, incoherent and total free cross sections of \code{setSampleInfo}. \\
+\multicolumn{2}{@{}l}{\textit{TestSigmoid}} \\
+\tn{limits\_\allowbreak{}midpoint\_\allowbreak{}monotonic\_\allowbreak{}no\_\allowbreak{}overflow} & Limits lowQ and highQ, value $(\mathrm{lowQ}+\mathrm{highQ})/2$ at $Q_0$, monotonic, bounded, no overflow up to $Q=10^4$ (C26). \\
+\tn{siglin\_\allowbreak{}adds\_\allowbreak{}linear\_\allowbreak{}term} & \code{siglin} $=$ \code{sigmoidal} $+\,a_1Q$. \\
+\tn{inelastic\_\allowbreak{}is\_\allowbreak{}the\_\allowbreak{}same\_\allowbreak{}logistic} & \code{inelastic} equals \code{sigmoidal} with highQ $=$ lowQ$\,[A/(A+1)]^2$. \\
+\tn{single\_\allowbreak{}q0\_\allowbreak{}default} & The four functions share $Q_0=7.0$ (P21). \\
+\multicolumn{2}{@{}l}{\textit{TestWeightedNiFit}} (fake lmfit recording the call) \\
+\tn{weights\_\allowbreak{}are\_\allowbreak{}inverse\_\allowbreak{}errors} & The fit receives weights $1/\sigma$ (P11). \\
+\tn{no\_\allowbreak{}valid\_\allowbreak{}errors\_\allowbreak{}means\_\allowbreak{}unweighted} & With $\sigma=-1$ no weights are passed. \\
+\bottomrule
+\end{longtable}
+
+\tssub*{\texttt{test\_misc.py}}
+\begin{longtable}{@{}p{0.36\textwidth} p{0.58\textwidth}@{}}
+\toprule Test & What is checked \\ \midrule\endhead
+\multicolumn{2}{@{}l}{\textit{TestIsotopes}} \\
+\tn{bound\_\allowbreak{}cross\_\allowbreak{}sections\_\allowbreak{}in\_\allowbreak{}barns} & Ni: \code{scoh_bound} $=4\pi(10.3)^2/100$ b, equal to the tabulated $\sigma_\mathrm{coh}$ (C15). \\
+\tn{deprecated\_\allowbreak{}spanish\_\allowbreak{}names} & \code{Elemento}, \code{elemento} still return \code{Element}, with a warning. \\
+\tn{unknown\_\allowbreak{}isotope\_\allowbreak{}raises} & An unknown name raises (P15). \\
+\tn{vanadium\_\allowbreak{}b\_\allowbreak{}consistent\_\allowbreak{}with\_\allowbreak{}sigma} & V: $b=-0.443$\,fm and $4\pi b^2/100=\sigma_\mathrm{coh}$; $\sigma_\mathrm{sca}=\sigma_\mathrm{coh}+\sigma_\mathrm{inc}$ (C16). \\
+\tn{vanadium\_\allowbreak{}standard\_\allowbreak{}defaults\_\allowbreak{}match\_\allowbreak{}database} & \code{setVanaInfo} defaults equal the table values. \\
+\multicolumn{2}{@{}l}{\textit{TestDataXYE}} \\
+\tn{file\_\allowbreak{}without\_\allowbreak{}points\_\allowbreak{}in\_\allowbreak{}peak\_\allowbreak{}range} & A file with $x<4$ loads; no peaks found (C22). \\
+\tn{plot\_\allowbreak{}saved\_\allowbreak{}before\_\allowbreak{}show} & The saved figure contains the curve even when \code{show()} closes the figure (C22). \\
+\multicolumn{2}{@{}l}{\textit{TestNiCalibration}} \\
+\tn{initial\_\allowbreak{}amplitudes\_\allowbreak{}mapping} & Each A$_i$, G$_i$, S$_i$ starts from its own entry of \code{initial}; lattice 3.52 by default, or the value given (C10, P7). \\
+\tn{real\_\allowbreak{}fit\_\allowbreak{}lattice\_\allowbreak{}fixed\_\allowbreak{}and\_\allowbreak{}wavelength\_\allowbreak{}scales} & A real lmfit fit of a synthetic Ni pattern ($\lambda=0.4986$\,\AA) recovers $\lambda$ to $10^{-6}$ with the lattice fixed at 3.52\,\AA; with 3.524\,\AA{} the fitted $\lambda$ is multiplied by $3.524/3.52$. \\
+\multicolumn{2}{@{}l}{\textit{TestMeasurementShowTable}} \\
+\tn{stdout\_\allowbreak{}restored\_\allowbreak{}and\_\allowbreak{}file\_\allowbreak{}closed} & \code{showTable} writes its file and restores the previous output stream (P13). \\
+\multicolumn{2}{@{}l}{\textit{TestProjectLayout}} \\
+\tn{no\_\allowbreak{}module\_\allowbreak{}shadows\_\allowbreak{}the\_\allowbreak{}standard\_\allowbreak{}library} & No file or folder name is in \code{sys.stdlib_module_names} (C21). \\
+\tn{stdlib\_\allowbreak{}importable\_\allowbreak{}from\_\allowbreak{}project\_\allowbreak{}root} & \code{import math, io, lmfit, numpy} works with the project directory as current directory. \\
+\tn{old\_\allowbreak{}package\_\allowbreak{}names\_\allowbreak{}still\_\allowbreak{}work\_\allowbreak{}with\_\allowbreak{}warning} & \code{toscana.math}/\code{toscana.io} return the same modules as \code{numerics}/\code{dataio}, with warnings. \\
+\multicolumn{2}{@{}l}{\textit{TestSourceHygiene}} \\
+\tn{no\_\allowbreak{}mojibake} & No doubly-encoded characters in any source file (C23). \\
+\bottomrule
+\end{longtable}
+
+\tssec{Adding a test}
+
+To protect a new function or a new correction, add a method whose name
+starts with \code{test_} to a class deriving from \code{unittest.TestCase}
+in one of the \code{test_*.py} files (or in a new file of that name). A
+minimal example:
+\begin{lstlisting}
+import unittest
+import helpers                      # makes `toscana` importable
+import numpy as np
+from toscana.physics.conversions import ang2q
+
+class TestMyCase(unittest.TestCase):
+    def test_backscattering(self):
+        # 2theta = 180 deg -> Q = 4 pi / lambda
+        self.assertAlmostEqual(float(ang2q(180.0, 0.5)), 8 * np.pi)
+\end{lstlisting}
+Useful comparisons: \code{assertAlmostEqual(a, b, places=6)} or
+\code{delta=...}; \code{np.testing.assert_allclose(x, y, rtol=...)} for
+arrays; \code{with self.assertRaises(ValueError): ...} to require an error.
+Wrap calls that print with \code{helpers.quiet}, and calls that write files
+in \code{with helpers.in_tempdir():}.
+% =====================================================================
+\tsapp{Module reference}\label{app:reference}
+% =====================================================================
+
+\tssec{Overview of the package}
+
+\begin{lstlisting}
+toscana/                       (the project directory, imported as `toscana`)
+  __init__.py      imports the subpackages; installs the deprecated aliases
+  _aliases.py      toscana.math -> numerics, toscana.io -> dataio (warnings)
+  calibration/     Ni powder calibration of wavelength and zero angle
+  chemistry/       compatibility re-exports (composition helpers)
+  data/            ASCII x-y-e data containers with plotting
+  dataio/          raw data, corrections, regrouping, parameter files, output
+  experiment/      experiment, beam, container, vanadium, sample bookkeeping
+  isotopes/        nuclear data table and the Element class
+  models/          model functions: vanadium, self-scattering, cross sections, Ni
+  numerics/        binning, Fourier transforms, windows, fitting, line shapes
+  physics/         unit conversions, crystallography, densities, cross sections
+  plotting/        matplotlib helpers
+  utils/           dates, dictionaries, subprocess, interactive stop
+  workflows/       the d4creg regrouping workflow
+  tests/           the test suite (Appendix B)
+  docs/            this document
+\end{lstlisting}
+
+\paragraph{Dependencies between modules.} Low-level packages
+(\code{numerics}, \code{physics}, \code{utils}, \code{isotopes}) do not import
+higher-level ones. \code{dataio} uses \code{physics}; \code{workflows} uses
+\code{dataio}, \code{numerics}, \code{plotting}; \code{calibration} uses
+\code{data}, \code{numerics}, \code{models}, \code{physics}; \code{experiment}
+uses \code{dataio}, \code{isotopes}, \code{physics}. One cycle exists:
+\code{dataio.parameters} imports \code{workflows.d4creg} (so that the
+\code{<run>} line can launch it), which imports \code{dataio}; it works
+because \code{dataio/__init__.py} imports \code{parameters} last.
+
+\paragraph{External libraries.} NumPy and SciPy are required.
+matplotlib (plots), lmfit (Ni fit) and h5py (NeXus files) are imported only
+inside the functions that need them.
+
+\paragraph{Reading the entries.} Each function is given with its full
+signature and default values. \fixed{C$n$} marks functions corrected during
+the audit (Appendix~\ref{app:audit}), \legacy{} functions kept as in the
+original code. Arrays called ``3-column'' have columns $(x, y, e)$.
+``Logs'' means that the function appends to \code{../logfiles/d4creg.log},
+a path relative to the current working directory.
+
+% ---------------------------------------------------------------------
+\tssec{Package \texttt{dataio}: raw data, corrections and files}
+
+\tssub{\texttt{dataio.acquisition} --- reading numors}
+
+\fnx{printRates(\allowbreak{}detector,\allowbreak\ counts,\allowbreak\ time,\allowbreak\ reactor\_power=52)}
+Logs the counts and the counting rate of \code{detector} (a label such as
+\code{"monitor"}), and the rate per MW of reactor power. A non-positive
+time is replaced by $10^{-6}$\,s, a non-positive power by 52\,MW. Prints
+nothing. \legacy
+
+\fnx{getRefLines(\allowbreak{}Lines)}
+Locates the marker lines of an ILL ASCII numor (lines starting with ten
+\code{R}, \code{A}, \code{F} or \code{S}) and returns the tuple
+\code{(lineR, lineAL, lineAI, lineFD, lineFS, lineFM, lineSI)}: run block,
+first two \code{A} blocks, three \code{F} (float parameter) blocks, first
+\code{S} (spectrum) block. Raises \code{ValueError} if a marker is missing.
+
+\fnx{readD4numorASCII(\allowbreak{}filename)}
+Reads one numor in ILL ASCII format. Returns \code{(data, counts)}:
+\code{data} is a dictionary of metadata (numor, label, user, local contact,
+title, subtitle, proposal, start and end times, and every parameter of the
+three float blocks under its label, e.g.\ \code{"CntTime (sec)"},
+\code{"MonitorCnts"}, \code{"TotalCnts"}, \code{"Theta_lue(deg)"},
+\code{"Theta_des(deg)"}, plus \code{ndet}, \code{ncell}); \code{counts} is
+an array (ndet, ncell). The counts are read 10 per line, in blocks of 11
+lines per detector. Prints a summary and logs the rates. \legacy
+
+\fnx{load\_nxs(\allowbreak{}nxs\_path,\allowbreak\ ncell=64)}
+Reads one numor in NeXus format with h5py (group \code{entry0}). Returns
+\code{(metadata, counts)} with the same keys as the ASCII reader where they
+exist: monitor (\code{monitor/monsum}), time, angles
+(\code{instrument/masked2theta_s} value and target), scanned variables
+(\code{TotalAcquisitionSpy}/\code{TotalCount} renamed \code{TotalCnts}),
+and counts reshaped to (9, ncell). The reactor power is set to 1\,MW
+(open item P8). \legacy
+
+\fnx{getOneNumor(\allowbreak{}numorfile,\allowbreak\ runInfo)} \fixed{C5}
+Reads and corrects one numor; this is the core of the reduction. Steps:
+\begin{enumerate}
+  \item read with \code{load_nxs} (if \code{runInfo["dataFormat"]=="Nexus"},
+    adding the extension \code{runInfo["ext"][4]}) or \code{readD4numorASCII};
+  \item compare the read and requested angles: more than
+    \code{cellTolerance[0]} cell width gives a warning, more than
+    \code{cellTolerance[1]} raises \code{ValueError} (cell width =
+    \code{angular_range_bank}/\code{ncell});
+  \item Poisson errors $\sqrt{N}$ on the raw counts;
+  \item dead-time correction of monitor and detector
+    (\code{runInfo["dead_time"]}); errors scaled by the same factor;
+  \item division of counts and errors by the efficiencies (\code{efffile});
+  \item normalisation to monitor or time (\code{runInfo["normalisation"]});
+  \item angles of every cell from \code{getAngles}, with the bank shifts of
+    \code{decfile}.
+\end{enumerate}
+Returns lists \code{x} (angles), \code{y} (counts), \code{e} (errors),
+array \code{q}, list \code{c} (cell identifiers) and the metadata. If
+\code{runInfo["writeNumor"]==1} the numor is also written by
+\code{saveOneNumor}. Note: \code{q} is computed before the zero angle is
+subtracted (open item, Section~\ref{sec:open}). Logs.
+
+\fnx{getNumors(\allowbreak{}runInfo)}
+Expands \code{runInfo["numorLst"]} with \code{getNumorFiles}, reads every
+numor from \code{runInfo["path_raw"]} with \code{getOneNumor}, and stacks
+them in an array of shape (n\_numors, 5, n\_points), the five rows being:
+angle $-$ \code{twotheta0}, counts, errors, $Q$, cell identifier. Returns
+\code{(numor, head)} with \code{head} the list of metadata dictionaries.
+If there is only one numor, \code{writeNumor} is forced to 1. Logs.
+
+\tssub{\texttt{dataio.corrections} --- detector corrections}
+
+\fnx{getDTC\_mcounts(\allowbreak{}monitor,\allowbreak\ time,\allowbreak\ dead\_time=2.4e-06)}
+Dead-time correction of the monitor (non-paralysable):
+$\nu = \nu_m/(1-\nu_m\tau)$, $\nu_m = $ monitor$/$time. Returns the
+corrected counts; raises \code{ValueError} if $\nu_m\tau\ge1$. Logs the factor.
+
+\fnx{getDTC\_dcounts(\allowbreak{}counts,\allowbreak\ total\_counts,\allowbreak\ time,\allowbreak\ dead\_time=7e-06)} \fixed{C4}
+Same correction cell by cell for the detector array. Returns the corrected
+array and the total counts scaled by $\sum N_\mathrm{corr}/\sum N_\mathrm{raw}$.
+Raises \code{ValueError} if any factor is not positive. Logs the overall
+and maximum factor. (Whether the dead time should apply per cell or per
+bank is open item P2.)
+
+\fnx{getEff(\allowbreak{}filename=\textquotesingle{}effd4c.eff\textquotesingle{},\allowbreak\ ndet=9,\allowbreak\ ncells=64)} \fixed{C27}
+Reads relative efficiencies, one line \code{det cell efficiency} per cell
+(1-based); lines containing \texttt{\#} are ignored. Values $\le0$ become
+\code{NaN}, which removes the cell from the regrouping. Cells not listed
+keep efficiency 1. \code{filename="ones"} returns all ones.
+
+\fnx{getDec(\allowbreak{}filename=\textquotesingle{}dec.dec\textquotesingle{},\allowbreak\ ndet=9)} \fixed{C27}
+Reads the angular shift of each bank, lines \code{det shift} (degrees).
+\code{"zeros"} returns zeros; \code{"manual"} returns a built-in list.
+
+\fnx{getErrorsNumor(\allowbreak{}counts)}
+Poisson errors $\sqrt{N}$. Must be called on raw counts.
+
+\fnx{getNormalFactors(\allowbreak{}monitor,\allowbreak\ time)}
+Returns the 2$\times$2 array $[[M, \sqrt M],[t, 0.01]]$: normaliser value
+and its absolute error for monitor and time.
+
+\fnx{normalise(\allowbreak{}counts,\allowbreak\ errors,\allowbreak\ normal,\allowbreak\ norm\_type=\textquotesingle{}monitor\textquotesingle{},\allowbreak\ norm\_time=120,\allowbreak\ norm\_mon=1000000)} \fixed{C2}
+Scales counts to \code{norm_mon} monitor counts (or \code{norm_time}
+seconds if \code{norm_type="time"}): $y_n = f y$, $f=$ norm$/M$, and
+$\sigma_n^2 = (f\sigma)^2 + (y_n\sigma_M/M)^2$. Zero-count cells become
+\code{NaN}. Returns \code{(counts, errors)}.
+
+\fnx{getAngles(\allowbreak{}counts,\allowbreak\ ttheta\_ref,\allowbreak\ zeros,\allowbreak\ cell\_step=0.125,\allowbreak\ det\_step=15.0)}
+Angle of every cell: $2\theta = 2\theta_\mathrm{ref} + \mathrm{zeros}[d] + 15^\circ d + 0.125^\circ c$
+($d$, $c$ 0-based); cell identifier $1000(d+1) + c + 1$. Returns two
+arrays of the shape of \code{counts}.
+
+\tssub{\texttt{dataio.d4creg\_outputs} --- regrouping and D4 files}
+
+\fnx{getDiffA(\allowbreak{}numor,\allowbreak\ head,\allowbreak\ runInfo)} \fixed{C6, C7, C29}
+Regroups all cells of all numors onto the regular angular grid
+\code{np.arange(amin, amax, step)} of \code{runInfo["angular_scale"]}. If
+the requested step is smaller than a cell
+(\code{angular_range_bank}/\code{ncell}), the cell width is used. Each cell,
+of the cell width and centred at its angle, is split between the (at
+most two) bins it overlaps with fractions $f$; its weight is $w = f\times
+M_i/\sum M$ (monitor share of its numor). For each bin
+$y = \sum w y_i/\sum w$ and $\sigma = \sqrt{\sum w^2\sigma_i^2}/\sum w$.
+Cells with \code{NaN} counts or errors, and parts of cells outside the grid,
+are ignored; empty bins are \code{NaN}. Returns an array (10, 5, n\_angles):
+index 0 is the sum of all banks, 1--9 the individual banks; rows are angle,
+counts, error, sum of weights, $Q$. The angle written is the lower edge of
+the bin (open item P1).
+
+\fnx{saveDiffAngle(\allowbreak{}diffA,\allowbreak\ head,\allowbreak\ runInfo)}
+Writes two files: \code{<file>.adat} (CORRECT format: header block, then
+angle, counts, error of the total diffractogram, positive finite points
+only) and \code{<file>.reg} (D4 format: header with the equivalent d4creg
+command line, efficiency and shift files, normalisation, zero angle,
+wavelength, dead times; then one block per bank with angle, counts, error,
+$Q$). Extensions from \code{runInfo["ext"]}.
+
+\fnx{saveDiffQ(\allowbreak{}diffQ,\allowbreak\ head,\allowbreak\ runInfo)}
+Writes \code{<file>.qdat} (CORRECT format) from a 3-column $(Q, y, e)$
+array, positive finite points only.
+
+\tssub{\texttt{dataio.parameters} --- the d4creg parameter file}
+
+\fnx{readParam(\allowbreak{}parametersFile)} \fixed{C25}
+Reads a d4creg parameter file and returns the dictionary \code{runInfo}
+used by the whole chain. Every non-empty line must start with \texttt{\#} or
+\code{!} (comments) or with a five-character tag \code{<xxx>} followed by
+values; text after \texttt{\#} on a tag line is ignored. Recognised tags and
+defaults:
+
+\begin{longtable}{@{}l l p{0.46\textwidth}@{}}
+\toprule Tag & Values & Meaning (default) \\ \midrule\endhead
+\code{<tol>} & w e & angle tolerance in cells for warning / error (0.1, 1.0) \\
+\code{<tau>} & $\tau_M$ $\tau_D$ & dead times in s ($2.4\times10^{-6}$, $7\times10^{-6}$) \\
+\code{<ext>} & 6 strings & extensions (\code{.reg .adat .qdat .cdat .nxs .log}) \\
+\code{<eff>} & file & efficiency file (\code{effd4c.eff}; \code{ones}) \\
+\code{<dec>} & file & bank shifts (\code{dec.dec}; \code{zeros}, \code{manual}) \\
+\code{<log>} & name & log file name (\code{d4creg.log}) \\
+\code{<fmt>} & \code{Nexus}/other & raw data format (\code{Nexus}) \\
+\code{<asc>} & min max step & angular grid, degrees (0, 140, 0.125) \\
+\code{<qsc>} & min max step & $Q$ grid, \AA$^{-1}$ (0, 23.8, 0.02); prints a recommended step \\
+\code{<wri>} & \code{True}/\code{False} & write one file per numor (False) \\
+\code{<plo>} & \code{True}/\code{False} & plot diffractograms (False) \\
+\code{<wle>} & $\lambda$ & wavelength, \AA{} (0.49857) \\
+\code{<zac>} & $2\theta_0$ & zero angle, degrees ($-0.1013$) \\
+\code{<rdp>} & path & raw data directory (\code{rawdata/}) \\
+\code{<nor>} & type t M & \code{monitor} or \code{time}, normalisation time and monitor (monitor, 80, $10^6$) \\
+\code{<out>} & name & base name of output files (\code{vanadium}) \\
+\code{<num>} & list & numors: \code{123456} or \code{123456-123460} (replaces the list) \\
+\code{<add>} & list & appends to the list of numors \\
+\code{<run>} & & runs \code{d4creg(runInfo)} with the values read so far \\
+\bottomrule
+\end{longtable}
+\noindent Side effect: (re)creates \code{../logfiles/d4creg.log}. The file
+is read sequentially, so several \code{<run>} lines with changes in between
+perform several reductions.
+
+\tssub{\texttt{dataio.running\_params} --- the analysis parameter file}
+
+\fnx{getRunningParams(\allowbreak{}parfile)}
+Reads the parameter file of the data-treatment notebooks and returns a
+dictionary \code{inputPar} keyed by tag; each value is a tuple whose first
+element is a label and the following ones the values. Tags: experiment
+(\code{<ins> <pro> <mpr> <lco> <dte> <cyc> <log> <env>}; \code{<dte>} gives
+\code{<sta>}/\code{<end>}, \code{<log>} gives \code{<nbk>}/\code{<pag>}), beam
+(\code{<zac> <wle> <sli> <fla> <apr>}; \code{<sli>} gives \code{<lft>}/\code{<rgt>},
+\code{<fla>} gives \code{<top>}/\code{<bot>}), grids (\code{<asc> <qsc> <rsc>}),
+container, absorber, normaliser, environment (\code{<Cmater> <Cshape>},
+\code{<Amater> <Ashape>}, \code{<Nmater> <Nshape>}, \code{<Emater> <Eshape>};
+shapes: type, inner diameter, outer diameter, height), sample
+(\code{<Sdescr> <StempK> <Sato01>... <Sdegcc> <Smassc> <Sshape> <Sfulln> <Stitle>};
+each \code{<SatoNN>} is \code{symbol number}, counted into \code{<SNelem>}),
+and data files (\code{<CoFile> <AbFile> <NoFile> <EnFile> <SaFile>}). Unknown
+materials or shapes print a warning. Its output is the input of
+\code{experiment.Measurement}. \legacy
+
+\tssub{\texttt{dataio.loading}, \texttt{saving}, \texttt{numors}, \texttt{correct}, \texttt{\_logfiles}}
+
+\fnx{read\_xye(\allowbreak{}filename)} \fixed{C27}
+Reads 2 or 3 columns, ignoring lines containing \texttt{\#}; a missing or
+non-numeric (\code{i}, \code{o}) error becomes 0. Returns three 1-D arrays.
+
+\fnx{read\_3col(\allowbreak{}filename)}
+Same, returned as one (n, 3) array.
+
+\fnx{saveFile\_xye(\allowbreak{}filename,\allowbreak\ x,\allowbreak\ y,\allowbreak\ e,\allowbreak\ heading)}, \code{saveFile_3col(filename, data, heading)}
+Write a 3-column file with \texttt{\#} header lines (formats \code{9.3f},
+\code{18.6f}, \code{18.6f}).
+
+\fnx{saveCorrelations(\allowbreak{}filename,\allowbreak\ ar,\allowbreak\ pcf,\allowbreak\ pdf,\allowbreak\ rdf,\allowbreak\ tor,\allowbreak\ run,\allowbreak\ heading)}
+Writes six columns $r, G, g$, RDF, $T, N$ from separate arrays.
+
+\fnx{saveRSCF(\allowbreak{}filename,\allowbreak\ fou,\allowbreak\ heading)} \textsf{\footnotesize\colorbox{green!15}{new header, 11 columns}}
+Writes the output of \code{sineFT}: 6 columns, or 11 with errors. After
+the file name and the user \code{heading}, a block describes each column
+(name, formula, units), the meaning and limits of the errors, and a line of
+column names \code{r G dG g dg RDF dRDF T dT N dN}. Other shapes raise.
+
+\fnx{saveOneNumor(\allowbreak{}x,\allowbreak\ y,\allowbreak\ e,\allowbreak\ q,\allowbreak\ c,\allowbreak\ head,\allowbreak\ runInfo)}
+Writes \code{<numor><ext[3]>} (angle, counts, error, $Q$, cell) for one numor.
+
+\fnx{getNumorFiles(\allowbreak{}numorLst)}
+Expands entries \code{"123456"} and \code{"123456-123460"} into a list of
+six-digit numors; malformed or reversed ranges raise.
+
+\fnx{generate\_com(\allowbreak{}CORRECT\_template=\textquotesingle{}correct\_template.com\textquotesingle{},\allowbreak\ name=\textquotesingle{}prueba\textquotesingle{},\allowbreak\ rsample=0.5,\allowbreak\ density=0.11,\allowbreak\ ...)}
+Fills the placeholders \texttt{\{pyfname\}}, \texttt{\{pyradius\_cm\}}, \ldots{} of a
+CORRECT template and writes \code{<name>.com}. It then runs a placeholder
+command (open item). \legacy
+
+\fnx{saveCORRECT(\allowbreak{}expt)}
+Writes a CORRECT command file \code{<sampleTitle>.com} from an experiment
+object (sample, container, background, vanadium, wavelength, beam size;
+zero angle written as 0 since already subtracted). \legacy
+
+\fnx{d4creg\_log\_path(\allowbreak{})}
+Returns \code{../logfiles/d4creg.log}, creating the folder and file if needed.
+
+% ---------------------------------------------------------------------
+\tssec{Package \texttt{workflows}}
+
+\fnx{d4creg(\allowbreak{}runInfo)} \fixed{C8, C9}
+The complete regrouping: \code{getNumors} $\to$ \code{getDiffA} $\to$
+\code{saveDiffAngle} (+ plots if \code{plotDiff}) $\to$ conversion of the
+regrouped angles to $Q$ $\to$ \code{rebin} onto \code{q_scale} with the
+actual angular step as width $\to$ masking of points with $y\le0$ and of
+their predecessor $\to$ \code{saveDiffQ} (+ plot) $\to$ renaming of the log
+file to \code{../logfiles/<logfile>.log}. Prints the equivalent d4creg
+command line. Adds \code{runDate}, \code{nbrNumors}, \code{d4creg_cl} to
+\code{runInfo}.
+
+% ---------------------------------------------------------------------
+\tssec{Package \texttt{numerics}: numerical methods}
+
+\tssub{\texttt{numerics.fourier} --- sine Fourier transforms}
+
+\fnx{sineFT(\allowbreak{}StrFactor,\allowbreak\ nr,\allowbreak\ qmax=23.5,\allowbreak\ density=0.1,\allowbreak\ constant=1.0,\allowbreak\ selfsca=1.0,\allowbreak\ window=0,\allowbreak\ with\_errors=False)} \fixed{C1, C18} \newbeh
+The main transform, Section~\ref{sec:conventions}. \code{StrFactor} is an
+array with columns $Q$, $S$ (and $\sigma_S$); \code{nr} the $r$ grid;
+\code{density} $\rho$ in atoms/\AA$^3$; \code{constant} a multiplicative
+factor; \code{selfsca} the value subtracted from $S$ (1 for a normalised
+$S(Q)$); \code{window} 0 (none) or 1 (standard Lorch). Returns an
+$(N_r, 6)$ array $r, G, g$, RDF, $T, N$, or with \code{with_errors=True}
+an $(N_r, 11)$ array with each error beside its function
+(Section~\ref{sec:errors}). The $Q$ integral uses all points with
+$Q<$\code{qmax}; the running integral starts at \code{nr[0]}.
+
+\fnx{getSineFT(\allowbreak{}vvec,\allowbreak\ yvec,\allowbreak\ uvec,\allowbreak\ vmax=0,\allowbreak\ c=1.0,\allowbreak\ s=1.0,\allowbreak\ w=0)} \fixed{P4}
+Generic transform
+$\mathrm{stf}(u) = \frac2\pi c\int_0^{v_\mathrm{max}} [y(v)-s]\,v\,\sin(vu)\,W(v)\,\mathrm{d}v$,
+$W$ = 1 (\code{w=0}) or Lorch (\code{w=1}). \code{vmax}$\le0$ means the
+end of the data. Returns \code{None} if the lengths differ. Used by
+\code{backFT} in both directions.
+
+\fnx{backFT(\allowbreak{}qu,\allowbreak\ ar,\allowbreak\ pdf,\allowbreak\ density,\allowbreak\ cut)} \fixed{C17}
+Cuts $g(r)$ (\code{pdf} on grid \code{ar}) according to \code{cut}
+(Section~\ref{sec:fourier}), transforms to $S(Q)$ on \code{qu} and back.
+Returns the six arrays $(S, G, g, \mathrm{RDF}, T, N)$. Typical use: remove
+the unphysical oscillations of $g(r)$ below the first peak and see their
+effect on $S(Q)$.
+
+\fnx{getSineIntegral(\allowbreak{}x)} \fixed{C20}
+$\mathrm{Si}(x)=\int_0^x \sin t/t\,\mathrm{d}t$ (\code{scipy.special.sici}).
+
+\noindent Internal helpers: \code{_simpson_weights(x)} (the weights $w_k$ of
+SciPy's Simpson rule), \code{_sine_ft_errors(...)} (the error
+propagation), \code{_running_simpson_matrix(x)} (matrix $C$ of the running
+integral, with self-check), \code{_apply_cut(ar, pdf, cut)}.
+
+\tssub{\texttt{numerics.windows} --- modification functions}
+
+\fnx{Lorch(\allowbreak{}q,\allowbreak\ qmax=23.5)} \fixed{P5}
+Standard Lorch value at one point: $\sin(\pi q/q_\mathrm{max})/(\pi q/q_\mathrm{max})$,
+1 at 0, 0 outside $[0, q_\mathrm{max})$. Raises if $q_\mathrm{max}\le0$.
+
+\fnx{LorchArray(\allowbreak{}q,\allowbreak\ qmax)} \textsf{\footnotesize\colorbox{green!15}{new}}
+The same for an array (replaces the removed, rescaled \code{LorchN}).
+
+\tssub{\texttt{numerics.binning} --- rebinning}
+
+\fnx{get\_xlim(\allowbreak{}xmin,\allowbreak\ xmax,\allowbreak\ dbin)} \fixed{C19}
+Bin edges and centres: centres $x_\mathrm{min} + i\,\delta$, edges at
+$\pm\delta/2$; returns \code{(nb, x_lim, x_bin)}.
+
+\fnx{get\_bins(\allowbreak{}x,\allowbreak\ xdel,\allowbreak\ x\_lim)}
+Bins covered by a rectangle of width \code{xdel} centred at \code{x}, and
+the fraction of the rectangle in each. Rectangles that start below the
+first edge or end beyond the last are rejected (empty lists).
+
+\fnx{rebin(\allowbreak{}xdel,\allowbreak\ wlength,\allowbreak\ data,\allowbreak\ xmin,\allowbreak\ xmax,\allowbreak\ dbin)} \fixed{C29}
+Rebins a 3-column array onto the grid of \code{get_xlim}. Each point is a
+rectangle of width \code{xdel} (in the units of $x$ if \code{wlength}$\le0$;
+if \code{wlength}$>0$, $x$ is $Q$ and \code{xdel} an angular width in degrees,
+converted to $\Delta Q = \frac{2\pi}{\lambda}\cos\theta\,\Delta(2\theta)\frac{\pi}{180}$).
+Weighted mean per bin, error $\sqrt{\sum f^2\sigma^2}/\sum f$. Points with
+\code{NaN} are skipped; empty bins are 0. Prints a debug line.
+
+\tssub{\texttt{numerics.operations} --- combining data sets}
+
+\fnx{binary\_sum(\allowbreak{}w1,\allowbreak\ data1,\allowbreak\ w2,\allowbreak\ data2)} \fixed{C3}
+$w_1y_1+w_2y_2$, error $\sqrt{w_1^2e_1^2+w_2^2e_2^2}$, for two 3-column
+arrays of the same shape (otherwise prints and returns \code{None}).
+
+\fnx{wsum2(\allowbreak{}w1,\allowbreak\ data1,\allowbreak\ w2,\allowbreak\ data2)} \fixed{C13}
+Four modes: $w_1=w_2=0$: inverse-variance weighted mean; $w_1=0$: $w_2y_2$
+with error $|w_2|e_2$; $w_2=0$: mixture $w_1y_1+(1-w_1)y_2$, requires
+$0<w_1\le1$ (raises otherwise); else $w_1y_1+w_2y_2$.
+
+\fnx{ratio(\allowbreak{}y1,\allowbreak\ e1,\allowbreak\ y2,\allowbreak\ e2)}
+$y_1/y_2$ with error $\sqrt{(y_2e_1)^2+(y_1e_2)^2}/y_2^2$; returns $0\pm0$
+where $y_2=0$. Lists, truncated to the shortest input. \legacy
+
+\tssub{\texttt{numerics.line\_shapes} --- peak and step functions}
+
+Constants \code{SIGMOID_Q0 = 7.0} and \code{SIGMOID_DQ = 2.4}
+(\AA$^{-1}$): default centre and width of the low-$Q$/high-$Q$ transition.
+
+\fnx{sigmoidal(\allowbreak{}Q,\allowbreak\ lowQ=0.4,\allowbreak\ highQ=0.2,\allowbreak\ Q0=SIGMOID\_Q0,\allowbreak\ dQ=SIGMOID\_DQ)} \fixed{C26} \newbeh
+Logistic step $(\mathrm{lowQ}+\mathrm{highQ}\,\delta)/(1+\delta)$, $\delta = e^{(Q-Q_0)/\mathrm{d}Q}$.
+
+\fnx{siglin(\allowbreak{}Q,\allowbreak\ lowQ=0.4,\allowbreak\ highQ=0.2,\allowbreak\ Q0=SIGMOID\_Q0,\allowbreak\ dQ=SIGMOID\_DQ,\allowbreak\ a1=0.001)} \newbeh
+\code{sigmoidal(Q)} $+\;a_1Q$.
+
+\fnx{step(\allowbreak{}q,\allowbreak\ qmax=23.5)} \fixed{P5}
+1 for $0\le q<q_\mathrm{max}$, else 0; raises if $q_\mathrm{max}\le0$.
+
+\fnx{Lorentzian(\allowbreak{}x,\allowbreak\ A,\allowbreak\ x0,\allowbreak\ gamma,\allowbreak\ bckg)}
+$A(\gamma/2)^2/[(x-x_0)^2+(\gamma/2)^2] + b$: height $A$, FWHM $\gamma$.
+
+\fnx{Lorentzian\_error(\allowbreak{}x,\allowbreak\ A=1,\allowbreak\ x0=0,\allowbreak\ gamma=1,\allowbreak\ bckg=0,\allowbreak\ e\_A=0,\allowbreak\ e\_x0=0,\allowbreak\ e\_gamma=0,\allowbreak\ e\_bckg=0)} \fixed{C11}
+Value and propagated error of \code{Lorentzian}.
+
+\fnx{Gaussian(\allowbreak{}x,\allowbreak\ A,\allowbreak\ x0,\allowbreak\ sigma,\allowbreak\ bckg)}
+Area-normalised Gaussian $\frac{A}{\sigma\sqrt{2\pi}}e^{-(x-x_0)^2/2\sigma^2}+b$ (area $A$).
+
+\fnx{Gaussian\_error(\allowbreak{}x,\allowbreak\ A=1,\allowbreak\ x0=0,\allowbreak\ sigma=1,\allowbreak\ bckg=0,\allowbreak\ e\_A=0,\allowbreak\ e\_x0=0,\allowbreak\ e\_sigma=0,\allowbreak\ e\_bckg=0)}
+Value and propagated error of \code{Gaussian}.
+
+\fnx{GaussianA(\allowbreak{}x,\allowbreak\ A,\allowbreak\ x0,\allowbreak\ sigma,\allowbreak\ asym=0)}
+Gaussian of area $A$ multiplied by $e^{-\mathrm{asym}(x-x_0)}$ (asymmetric
+peak, used for the Ni reflections).
+
+\fnx{LorGau(\allowbreak{}x,\allowbreak\ f0=1.0,\allowbreak\ eta=0.5,\allowbreak\ sigma=2.0,\allowbreak\ gamma=2.0,\allowbreak\ bckg=0.0)}
+Mixture centred at 0: $f_0[\eta e^{-x^2/2\sigma^2} + (1-\eta)L(x)] + b$,
+both components of unit height.
+
+\fnx{LorGau\_error(\allowbreak{}x,\allowbreak\ f0=(\allowbreak{}1.0,\allowbreak\ 0.0),\allowbreak\ eta=(\allowbreak{}0.5,\allowbreak\ 0.0),\allowbreak\ sigma=(\allowbreak{}2.0,\allowbreak\ 0.0),\allowbreak\ gamma=(\allowbreak{}2.0,\allowbreak\ 0.0),\allowbreak\ bckg=(\allowbreak{}0.0,\allowbreak\ 0.0))} \fixed{C12}
+Value and error of \code{LorGau}; each argument is a pair (value, error).
+
+\tssub{\texttt{numerics.fitting}, \texttt{polynomials}, \texttt{peak\_finding}, \texttt{signal\_processing}}
+
+\fnx{get\_chi(\allowbreak{}y1,\allowbreak\ y2)}
+Root-mean-square difference $\sqrt{\langle(y_1-y_2)^2\rangle}$.
+
+\fnx{fit\_and\_find\_extremum(\allowbreak{}x,\allowbreak\ y)}
+Fits a parabola and returns the extremum $x=-b/2a$, its value and the
+fitted curve.
+
+\fnx{fittingRange0(\allowbreak{}xmin,\allowbreak\ xmax,\allowbreak\ ymin,\allowbreak\ ymax,\allowbreak\ abcissas,\allowbreak\ ordinates,\allowbreak\ errors)}, \code{fittingRange(...)}, \code{fit_range(xmin, xmax, ymin, ymax, data)} \fixed{P20}
+Select the points inside the rectangle $[x_\mathrm{min},x_\mathrm{max}]\times[y_\mathrm{min},y_\mathrm{max}]$.
+\code{fittingRange} returns three $(n,1)$ arrays, the other two one
+$(n,3)$ array. Warn below 10 points.
+
+\fnx{polyQ1(\allowbreak{}x,\allowbreak\ a0,\allowbreak\ a1)}, \code{polyQ2(x, a0, a1, a2)}, \code{polyQ4(x, a0, ..., a4)}
+Polynomials $\sum a_i x^i$ (Horner scheme).
+
+\fnx{find\_minimum\_within\_range(\allowbreak{}x,\allowbreak\ y,\allowbreak\ x\_min,\allowbreak\ x\_max)}
+$(x, y)$ of the minimum of $y$ in $[x_\mathrm{min}, x_\mathrm{max}]$ (raises
+on an empty range).
+
+\fnx{find\_peaks\_in\_range(\allowbreak{}x,\allowbreak\ y,\allowbreak\ x\_min,\allowbreak\ x\_max)}
+Local maxima (\code{scipy.signal.find_peaks}) whose height divided by the
+minimum of the range exceeds 3.5; returns positions and these ratios.
+\legacy
+
+\fnx{smooth\_curve(\allowbreak{}x,\allowbreak\ y,\allowbreak\ smoothing\_factor)}
+Centred moving average over $2\lfloor w/2\rfloor+1$ points,
+$w = \lfloor\text{factor}\times n\rfloor$, shrinking at the edges; \code{x}
+is not used.
+
+% ---------------------------------------------------------------------
+\tssec{Package \texttt{physics}}
+
+\tssub{\texttt{physics.conversions}, \texttt{geometry}}
+
+\fnx{ang2q(\allowbreak{}x,\allowbreak\ wlength=0.5)}, \code{q2ang(x, wlength=0.5)}
+$Q = \frac{4\pi}{\lambda}\sin(\pi\,2\theta/360)$ and its inverse; raise if
+$\lambda\le0$.
+
+\fnx{getCylVolume(\allowbreak{}diameter=5.0,\allowbreak\ height=50.0)}
+$\pi(d/2)^2h$ (mm$^3$ for mm input).
+
+\tssub{\texttt{physics.crystallography}}
+
+Constant \code{NI_LATTICE_PARAMETER = 3.52} (\AA).
+
+\fnx{sf\_fcc(\allowbreak{}h,\allowbreak\ k,\allowbreak\ l)}, \code{sf_bcc(h, k, l)}, \code{sf_sc(h, k, l)}
+Geometric structure factors $\sum_j e^{-i\pi(\ldots)}$ of the fcc (4 or 0),
+bcc (2 or 0) and simple cubic (1) lattices.
+
+\fnx{reflections\_fcc(\allowbreak{}wavelength=0.5,\allowbreak\ twotheta0=0.0,\allowbreak\ lattice=NI\_LATTICE\_PARAMETER)}
+Angles $2\theta+2\theta_0$ (degrees) of the allowed fcc reflections in
+increasing order, followed by the mirrored set $180^\circ-2\theta-2\cdot2\theta_0$.
+
+\tssub{\texttt{physics.properties}}
+
+Constants \code{THERMAL_WAVELENGTH = 1.798} (\AA) and
+\code{THERMAL_ENERGY_MEV} $=81.8042/1.798^2 = 25.30$ (meV).
+
+\fnx{getAtomicDensity(\allowbreak{}density=1.0,\allowbreak\ molarMass=6.0)}
+$\rho = 0.602214076\,d/\bar M$ atoms/\AA$^3$ ($\bar M$ per atom). A
+non-positive density gives the value of water (0.1004) with a message.
+
+\fnx{getDensity(\allowbreak{}atomic\_density=0.1,\allowbreak\ molarM=6.0)}
+Inverse of the above.
+
+\fnx{getMassNumber(\allowbreak{}molarMass=6.0)}
+$A = M/m_n$, $m_n = 1.0086649$\,u.
+
+\fnx{getFreeXS(\allowbreak{}BoundXS=5.08,\allowbreak\ A=50.9415)}
+$\sigma_\mathrm{bound}[A/(A+1)]^2$ for one nucleus.
+
+\fnx{getAbsXS(\allowbreak{}AbsXS=5.08,\allowbreak\ wavelength=THERMAL\_WAVELENGTH)} \fixed{C30}
+$\sigma_\mathrm{abs}\lambda/1.798$.
+
+\fnx{getNofAtoms(\allowbreak{}atoms)}, \code{getConcentrations(atoms)}, \code{AtomicAvg(concentration, magnitude)}
+Number of atoms of a formula unit given as \texttt{\{"Si": 1, "O": 2\}};
+concentrations $c_i = n_i/\sum n$; average $\sum c_i m_i$ of a property
+given as a dictionary.
+
+% ---------------------------------------------------------------------
+\tssec{Package \texttt{models}}
+
+\fnx{inelastic(\allowbreak{}x,\allowbreak\ A=51.0,\allowbreak\ lowQ=0.4,\allowbreak\ Q0=SIGMOID\_Q0,\allowbreak\ dQ=SIGMOID\_DQ)}
+Inelasticity (Placzek-like) decrease of the self scattering:
+$\mathrm{lowQ}\,[1+(A/(1+A))^2\delta]/(1+\delta)$, from the bound value at
+low $Q$ to the free value at high $Q$.
+
+\fnx{self024(\allowbreak{}x,\allowbreak\ self0,\allowbreak\ q2,\allowbreak\ q4)}
+$s_0 + q_2Q^2 + q_4Q^4$, an empirical self-scattering curve to fit.
+
+\fnx{vanaQdep(\allowbreak{}x,\allowbreak\ a0,\allowbreak\ a1,\allowbreak\ a2,\allowbreak\ A=51.0,\allowbreak\ lowQ=0.4,\allowbreak\ Q0=SIGMOID\_Q0,\allowbreak\ dQ=SIGMOID\_DQ)}
+Vanadium $Q$ dependence: \code{polyQ2} (resolution, attenuation trends)
+$\times$ \code{inelastic}.
+
+\fnx{XS\_model(\allowbreak{}Eval,\allowbreak\ Eeff,\allowbreak\ composition\_vec,\allowbreak\ bound\_xs\_vec,\allowbreak\ A\_vec)}
+Epithermal total scattering cross section
+$\sum c_i\sigma_i[A_i/(A_i+1)]^2[1+E_\mathrm{eff}/(2A_iE)]$.
+
+\fnx{scattering\_probability(\allowbreak{}E0,\allowbreak\ scat\_xs,\allowbreak\ composition\_vec,\allowbreak\ abs\_xs\_vec)}
+$1-\sigma_a/(\sigma_a+\sigma_s)$ with $\sigma_a = \sum c_i\sigma_{a,i}/\sqrt{E_0/E_\mathrm{th}}$ ($E_0$ in meV).
+
+\fnx{niPeaks10(\allowbreak{}x,\allowbreak\ I0,\allowbreak\ slope,\allowbreak\ quad,\allowbreak\ wavelength,\allowbreak\ twotheta0,\allowbreak\ A0..A9,\allowbreak\ G0..G9,\allowbreak\ S0..S9,\allowbreak\ lattice=NI\_LATTICE\_PARAMETER)}
+Ni powder model: background $I_0 + \mathrm{slope}\,x + \mathrm{quad}\,x^2$
+plus ten \code{GaussianA} peaks (areas A$_i$, widths S$_i$, asymmetries
+G$_i$) at the first ten fcc reflections for the given wavelength, zero
+angle and lattice parameter. $x$ is $2\theta$ in degrees.
+
+% ---------------------------------------------------------------------
+\tssec{Package \texttt{calibration}}
+
+\fnx{setting\_model\_d4nifit(\allowbreak{}nifile,\allowbreak\ zac\_ini=0.0,\allowbreak\ lattice=NI\_LATTICE\_PARAMETER)}
+Prepares the Ni calibration. Reads the regrouped Ni diffractogram
+(\code{DataXYE}), estimates $\lambda$ from the first peak, assumed to be
+(111): $\lambda = 2(a/\sqrt3)\sin\theta_{111}$; normalises intensities and
+errors to the value midway between the second and third peaks; builds the
+35 initial parameters (background, $\lambda$, $2\theta_0$, ten areas
+proportional to typical Ni intensities, asymmetries 0, widths 0.2--0.4);
+plots data, initial model and residuals. Returns
+\code{(axes, limits, xy_res, xy_ref, xy_fit, planes, initial, nickel)}.
+
+\fnx{fitting\_model\_d4nifit(\allowbreak{}nickel,\allowbreak\ limits,\allowbreak\ initial,\allowbreak\ lattice=NI\_LATTICE\_PARAMETER)} \fixed{C10, P11}
+Fits \code{niPeaks10} with lmfit to the points inside \code{limits}
+(rectangle in $2\theta$ and intensity), weighted by $1/\sigma$. Free: I0,
+slope, wavelength, twotheta0, A$_i$, S$_i$; fixed: quad, G$_i$, lattice.
+Returns the lmfit \code{ModelResult}.
+
+\fnx{showing\_results\_d4nifit(\allowbreak{}result,\allowbreak\ nickel,\allowbreak\ axes,\allowbreak\ limits,\allowbreak\ xy\_res,\allowbreak\ xy\_ref,\allowbreak\ xy\_fit,\allowbreak\ planes)}
+Prints $\lambda$, $2\theta_0$ and background with errors, a table of the
+ten reflections (position, area, width), plots the fit with the fit
+statistics, and saves \code{<basename>.png}.
+
+% ---------------------------------------------------------------------
+\tssec{Package \texttt{experiment}}
+
+\tssub{\texttt{experiment.measurement}}
+
+\fnx{class Measurement(\allowbreak{}inputPar)} \fixed{C14, P9, P13}
+Collects everything about a measurement from the dictionary returned by
+\code{getRunningParams}, and reads the five data files (sample, environment,
+container, normaliser, absorber) with \code{read_3col}. Main attributes:
+experiment and beam information; \code{vslits}, \code{hslits},
+\code{beamHeight}, \code{beamWidth}; \code{aScale}, \code{qScale},
+\code{rScale}; \code{container}, \code{normaliser}, \code{absorber},
+\code{environ} (material, shape, dimensions); sample \code{Shape},
+\code{InnerDiam}, \code{OuterDiam}, \code{Height}, \code{Volume}
+$=\pi h(r_o^2-r_i^2)/1000$ cm$^3$, \code{Mass}, \code{Density},
+\code{EffDensity} $=$ mass/volume, \code{PackingFraction}; composition
+\code{atoms}, \code{natoms}, \code{conc}, \code{nuclei}; averages
+\code{molarMass}, \code{scoh}, \code{sinc}, \code{ssca}, \code{sabs}
+(barns/atom), \code{bcoh}, \code{binc} (moduli of the averaged lengths,
+P10); \code{free} (per-element free cross section); \code{b2lowQ}
+$=\sigma_\mathrm{sca}/4\pi$, \code{b2highQ} $=\sigma_\mathrm{free}/4\pi$;
+\code{sabswl} (absorption at the wavelength); \code{AtomicDensity},
+\code{EffAtomicDensity}; data arrays \code{Data}, \code{envData},
+\code{conData}, \code{norData}, \code{absData}. A warning is printed if
+the container inner diameter differs from the sample outer diameter.
+\code{showTable(outfile=None)} prints the main parameters, to a file if
+given.
+
+\tssub{\texttt{experiment.info}}
+
+Constants \code{VANADIUM_DENSITY_GCC = 6.11}, \code{VANADIUM_MOLAR_MASS = 50.9415},
+\code{VANADIUM_ATOMIC_DENSITY} $=0.0722305$ atoms/\AA$^3$.
+
+\fnx{setExpInfo(\allowbreak{}Proposal,\allowbreak\ mainProposer,\allowbreak\ experimenters,\allowbreak\ LC,\allowbreak\ otherUsers,\allowbreak\ startDate,\allowbreak\ endDate,\allowbreak\ environment,\allowbreak\ logBook,\allowbreak\ logPage,\allowbreak\ instrument)}
+\fnx{setBeamInfo(\allowbreak{}zeroAngle=0,\allowbreak\ wavelength=0.5,\allowbreak\ LohenSlit=2.5,\allowbreak\ GamsSlit=-2.5,\allowbreak\ topFlag=25.0,\allowbreak\ bottomFlag=-25.0)}
+\fnx{setCanInfo(\allowbreak{}material=\textquotesingle{}Vanadium\textquotesingle{},\allowbreak\ shape=\textquotesingle{}Cylinder\textquotesingle{},\allowbreak\ outerDiam=5,\allowbreak\ innerDiam=4.8,\allowbreak\ height=60.0)}
+\fnx{setBinInfo(\allowbreak{}AngularResolution=0.125,\allowbreak\ AMin=0.0,\allowbreak\ AMax=140.0,\allowbreak\ AStep=0.125,\allowbreak\ QMin=0.0,\allowbreak\ QMax=23.5,\allowbreak\ QStep=0.02,\allowbreak\ RMin=0.0,\allowbreak\ RMax=20.0,\allowbreak\ RStep=0.01)}
+\fnx{setNumorInfo(\allowbreak{}totalNumors,\allowbreak\ containerNumors,\allowbreak\ environmentNumors,\allowbreak\ nickelNumors,\allowbreak\ vanadiumNumors,\allowbreak\ absorberNumors,\allowbreak\ sampleNumors)}
+Each builds and prints a dictionary describing one part of the
+experiment (beam width = left $-$ right slit, height = top $-$ bottom
+flag; can wall thickness; number of points of each grid; numor ranges
+given as (label, first, last)). \legacy
+
+\fnx{setVanaInfo(\allowbreak{}IncXS=5.08,\allowbreak\ CohXS=0.02466,\allowbreak\ ScaXS=5.10466,\allowbreak\ AbsXS=5.08,\allowbreak\ CohSL=-0.443,\allowbreak\ molarM=50.9415,\allowbreak\ NAtoms=1.0,\allowbreak\ Diam=6.08,\allowbreak\ Height=50.0,\allowbreak\ density=VANADIUM\_DENSITY\_GCC)} \fixed{C16, P6}
+Dictionary of the vanadium standard: cross sections, $b$, self scattering
+at $Q=0$ ($\sigma_\mathrm{inc}/4\pi$), atomic density, mass number, free
+incoherent cross section, volume in cm$^3$.
+
+\fnx{setSampleInfo(\allowbreak{}comp\_sample,\allowbreak\ atoms\_sample,\allowbreak\ natoms\_sample,\allowbreak\ elements,\allowbreak\ c\_sample,\allowbreak\ wavelength=0.5,\allowbreak\ beamH=50.0,\allowbreak\ vanavol=1.0,\allowbreak\ vanadens=VANADIUM\_ATOMIC\_DENSITY,\allowbreak\ height=60.0,\allowbreak\ diameter=5.0,\allowbreak\ mass=1.0,\allowbreak\ density=1.0,\allowbreak\ title=\textquotesingle{}sample\textquotesingle{})} \fixed{C30, P9}
+Dictionary of the sample: height in the beam, volumes, effective density,
+packing and filling fractions, average molar mass, atomic and effective
+atomic densities, averaged cross sections, absorption at $\lambda$,
+average $b_\mathrm{coh}$, per-element free cross sections, self scattering
+at $Q=0$, and the sample/vanadium volume and density ratios used for
+normalisation. \code{elements} maps symbols to \code{Element} objects,
+\code{c_sample} symbols to concentrations.
+
+% ---------------------------------------------------------------------
+\tssec{Package \texttt{isotopes}}
+
+\fnx{class Element(\allowbreak{}iso\_name,\allowbreak\ table=0,\allowbreak\ *{}*kwargs)} \fixed{C15, P15}
+Nuclear data of an element (\code{"Ni"}) or isotope (\code{"Li6"},
+\code{"H2"} for deuterium) from \code{database.ISOTOPE_DICT} (values from
+\emph{Neutron Scattering Fundamentals}, vol.~44, App.~2). Attributes:
+\code{symbol}, \code{iso}, \code{name}, \code{A}, \code{Z}, \code{weight}
+(u), \code{abundance}, \code{spin}, \code{re_bcoh}, \code{im_bcoh},
+\code{re_binc}, \code{im_binc} (fm), \code{sig_coh}, \code{sig_inc},
+\code{sig_sca}, \code{sig_abs} (b), complex \code{bcoh}, \code{binc},
+\code{scoh_bound} $=4\pi|b_\mathrm{coh}|^2/100$, \code{sinc_bound} (b),
+\code{neut} $=A-Z$. Keyword arguments override table values (with
+plausibility warnings). \code{table=1} prints the table of the isotope,
+\code{table=2} of all isotopes of the element. Unknown names raise
+\code{ValueError}. \code{Element.getIsotope(name)} lists the isotopes of an
+element name, or all names with \code{"All"}. \code{Elemento},
+\code{elemento}: deprecated aliases.
+
+\fnx{getFree(\allowbreak{}isot,\allowbreak\ key)}
+Free value $[A/(A+1)]^2\times$\code{key} (complex) for an \code{Element}.
+
+\noindent Validators \code{Positive}, \code{Negative}, \code{SemiWhole},
+\code{Top}, \code{Int}, \code{String}, \code{Complex}: print a warning when
+an override is implausible. \code{database.NOMBRES} and \code{UNITS}: names
+and units of the table columns.
+
+% ---------------------------------------------------------------------
+\tssec{Packages \texttt{data}, \texttt{plotting}, \texttt{utils}, \texttt{chemistry}}
+
+\fnx{class DataXYE(\allowbreak{}filename)} \fixed{C22}
+Reads a 2- or 3-column file (header lines start with \texttt{\#} or \code{!};
+a missing error is stored as $-1$); attributes \code{x}, \code{y},
+\code{e}, \code{head}, averages, minima and maxima, \code{peaks_x},
+\code{peaks_y} and the minimum \code{xminr}, \code{yminr} in
+$x\in[5,40]$ (empty / \code{NaN} if no point there). Methods
+\code{plot(file_format=0, xmin, xmax, ymin, ymax)} (axis label from the
+extension; saves to \code{../regdata/<basename>.<format>} if a format is
+given), \code{show()}, \code{header(lines=1000)}. \code{DataXYE_old} is an
+alias.
+
+\fnx{class DataXYE0(\allowbreak{}filename,\allowbreak\ symbol,\allowbreak\ save,\allowbreak\ scale,\allowbreak\ superplot,\allowbreak\ ...)}, \code{class DataXYE2(file)}
+Simpler containers read with \code{np.loadtxt}, with \code{plot} methods
+(scale \code{"a"}, \code{"q"} or \code{"r"} for the axis label;
+\code{superplot} to overlay); \code{DataXYE0.save(filename)}. \legacy
+
+\fnx{plotQ(\allowbreak{}plt,\allowbreak\ ...)}, \code{plotA(plt, ...)}, \code{plotR(plt, ...)}
+Set title, labels, limits, grid and legend of the current matplotlib plot
+for $Q$, angle or $r$ scales.
+
+\fnx{defColors(\allowbreak{})}, \code{makePlotsA(runInfo, diffA, head, numor)}, \code{makePlotsQ(runInfo, diffQbin, head, numor)}
+Colour list and the diagnostic plots of d4creg (individual numors,
+individual banks, total in angle; total in $Q$).
+
+\fnx{getDate(\allowbreak{})}
+Current date as \code{" Dayname DD/MM/YYYY HH:MM:SS"}.
+
+\fnx{extractDict(\allowbreak{}dictionary,\allowbreak\ key)}, \code{extractAttr(Dict, attr)}
+Sub-dictionary of a dictionary of dictionaries; dictionary of one
+attribute of a dictionary of objects (e.g.\ \code{extractAttr(elements, "sig_sca")}).
+
+\fnx{execute\_command\_and\_write\_to\_file(\allowbreak{}command,\allowbreak\ output\_file)}
+Runs a command, writing its output to a file; errors are printed, not raised.
+
+\fnx{stop(\allowbreak{}message)}
+Prints a message and asks whether to continue (interactive sessions only;
+raises \code{RuntimeError} otherwise).
+
+\noindent \code{chemistry.composition} re-exports \code{AtomicAvg},
+\code{getConcentrations}, \code{getNofAtoms} (from \code{physics.properties})
+and \code{extractAttr}, \code{extractDict} (from \code{utils.dicts}) for
+compatibility.
+
+% ---------------------------------------------------------------------
+\tssec{Top level: \texttt{\_\_init\_\_} and \texttt{\_aliases}}
+
+\code{toscana/__init__.py} imports the subpackages \code{data},
+\code{dataio}, \code{experiment}, \code{isotopes}, \code{models},
+\code{numerics}, \code{physics}, \code{plotting}, \code{utils} (not
+\code{calibration}, \code{chemistry}, \code{workflows}, which must be
+imported explicitly) and defines \code{__version__ = "0.1.0"}.
+\code{_aliases.py} installs, at the front of Python's import machinery, a
+finder that maps \code{toscana.math...} to \code{toscana.numerics...} and
+\code{toscana.io...} to \code{toscana.dataio...}, returning the existing
+module objects and emitting a \code{DeprecationWarning}; attribute access
+\code{toscana.math} is handled the same way. Remove both once all
+notebooks use the new names.
+
+% When \input into the manual, stop here; stand-alone, close the document.
+\ifdefined\ToScaNAManual\expandafter\endinput\fi
+\end{document}
