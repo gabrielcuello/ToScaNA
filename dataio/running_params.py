@@ -1,3 +1,30 @@
+"""
+Reader of the parameter file of the data-treatment notebooks.
+
+Position in the processing chain
+--------------------------------
+Used after the regrouping, for the data treatment (corrections, normalisation,
+S(Q), Fourier transform). ``getRunningParams`` reads the description of the
+experiment (instrument, beam, grids, container, absorber, normaliser, environment,
+sample, data files) into the dictionary ``inputPar``, which is the input of
+``toscana.experiment.Measurement``. It is distinct from
+``dataio.parameters.readParam`` (the d4creg file), although the syntax is similar.
+
+Functions
+---------
+getRunningParams
+    Read the notebook parameter file into ``inputPar`` (tag -> (label, values...)).
+
+Conventions
+-----------
+- Every value of ``inputPar`` is a tuple ``(label, value1, value2, ...)``; the label
+  is a human-readable description used for printing tables.
+- Units are those of the labels: angles in degrees, wavelength in Å, slits and
+  flags in mm, Q in 1/Å, r in Å, temperature in K, density in g/cm³, mass in g
+  (shape dimensions as given in the file).
+- No file is written and nothing is logged.
+"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -7,10 +34,93 @@ def getRunningParams(parfile: str) -> dict[str, Any]:
     """
     Read the parameters file for data treatment notebooks (legacy behavior).
 
+    Line syntax (legacy, NOT the C25-corrected parser of ``readParam``):
+
+    - a line of length <= 1 (only the newline) is skipped; a line starting with
+      ``#`` or ``!`` is a comment;
+    - any other line must start with ``<``; it is split with ``split(" ")``
+      (single spaces): token 0 is the tag, tokens 1, 2, ... the values.
+      Consequences: a value that is the LAST token of its line keeps the
+      trailing newline (``"D4\n"``); repeated spaces produce empty tokens
+      (``"<ins>  D4"`` gives ``""`` as value); numeric values are converted
+      with ``float``, which tolerates the newline. In practice each value line
+      should end with a space or with `` # comment``;
+    - unknown tags are silently ignored.
+
+    Tags read (``inputPar[tag] = (label, ...)``; values are strings unless
+    "float" is stated):
+
+    Experiment
+        ``<ins>`` instrument; ``<pro>`` proposal; ``<mpr>`` main proposer;
+        ``<lco>`` local contact; ``<cyc>`` cycle; ``<env>`` environment code;
+        ``<dte>`` dates ``start-end``, also gives ``<sta>`` (text before the
+        first ``-``) and ``<end>`` (text after it); ``<log>`` logbook
+        ``notebook-page``, also gives ``<nbk>`` and ``<pag>`` the same way.
+    Beam
+        ``<zac>`` zero angle, deg (float); ``<wle>`` wavelength, Å (float);
+        ``<sli>`` slits: ``(label, first value as str)`` plus ``<lft>`` and
+        ``<rgt>`` (floats, mm, values 1 and 2); ``<fla>`` flags: same with
+        ``<top>`` and ``<bot>``; ``<apr>`` angular precision, deg (float).
+    Grids
+        ``<asc>`` angular scale (deg), ``<qsc>`` Q scale (1/Å), ``<rsc>`` r scale
+        (Å): ``(label, min, max, step)`` as floats.
+    Container, absorber, normaliser, environment
+        ``<Cmater>``, ``<Amater>``, ``<Nmater>``, ``<Emater>``: material; a
+        warning is printed if it is not in the accepted list (container: SiO2,
+        V, TiZr, Nb, None; absorber: B, None; normaliser: V, None; environment:
+        V, A, None). ``<Cshape>``, ``<Ashape>``, ``<Nshape>``, ``<Eshape>``:
+        ``(label, type, inner diameter, outer diameter, height)`` as STRINGS;
+        a warning is printed if the type is not ``cylinder``.
+    Sample
+        ``<Sdescr>`` description: the text from character 9 of the line up to
+        the first ``#`` (if there is no ``#``, the last character is dropped);
+        ``<StempK>`` temperature, K (float); ``<SatoNN>`` (any tag starting
+        with ``<Sato``): from character 9 up to ``#``, split on spaces, giving
+        ``("Atom kk: ", symbol, number, ...)`` with kk the running count of such
+        lines, and ``<SNelem>`` = ``("Number of elements:", count)``;
+        ``<Sdegcc>`` density, g/cm³ (float); ``<Smassc>`` mass in the can, g
+        (float); ``<Sshape>`` shape as for the container; ``<Sfulln>`` fullness
+        (float); ``<Stitle>`` title.
+    Data files
+        ``<CoFile>`` container, ``<AbFile>`` absorber, ``<NoFile>`` vanadium
+        (normaliser), ``<EnFile>`` environment, ``<SaFile>`` sample.
+
+    Parameters
+    ----------
+    parfile : str
+        Path of the parameter file (platform default encoding).
+
+    Returns
+    -------
+    dict
+        ``inputPar``: tag (string including ``<>``) -> tuple ``(label, values...)``.
+        Always contains ``"<par>"`` = ``("Parameter file   ", parfile)``.
+
+    Raises
+    ------
+    ValueError
+        ``"Wrong input on line <i> in file <name>"`` if a line longer than one
+        character does not start with ``#``, ``!`` or ``<`` (checked for the
+        whole file first; the message is also printed); a numeric value that
+        cannot be converted to float.
+    IndexError
+        If a tag line has fewer values than the tag needs.
+    FileNotFoundError
+        If ``parfile`` does not exist.
+
     Notes
     -----
-    This is a legacy notebook-oriented parser distinct from `toscana.dataio.parameters.readParam`.
-    It intentionally preserves the legacy dictionary shape (keys like `<ins>`, `<asc>`, ...).
+    This is a legacy notebook-oriented parser distinct from
+    `toscana.dataio.parameters.readParam`. It intentionally preserves the legacy
+    dictionary shape (keys like `<ins>`, `<asc>`, ...).
+
+    Prints warnings for unknown materials and shapes. Because of the
+    ``split(" ")`` parsing, a material or shape type that is the last token of
+    its line includes the newline and triggers a spurious warning.
+
+    See Also
+    --------
+    toscana.experiment.Measurement : consumes ``inputPar``.
     """
     shapes = ["cylinder"]
     containers = ["SiO2", "V", "TiZr", "Nb", "None"]

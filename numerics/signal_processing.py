@@ -1,3 +1,17 @@
+"""
+Simple smoothing of a curve.
+
+Place in the processing chain: auxiliary tool (e.g. to smooth a noisy curve
+before searching for minima or for display); not used in the main
+correction chain.
+
+Public functions
+----------------
+smooth_curve(x, y, smoothing_factor)
+    Centred moving average over a number of points proportional to the
+    length of the curve.
+"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -32,6 +46,17 @@ def smooth_curve(
 
     Notes
     -----
+    With n = len(y), w = int(smoothing_factor·n) (truncation toward zero) and
+    h = w // 2, the output is
+
+        ys_i = mean(y[max(0, i - h) : min(n, i + h + 1)]),
+
+    i.e. a centred unweighted average over 2h + 1 points (w + 1 points for
+    even w), using fewer points within h of the ends. If w == 0 the input is
+    returned unchanged (as ``numpy.asarray(y)``, possibly the same object,
+    keeping its dtype); w == 1 gives h = 0, i.e. a float copy of y.
+    NaN values contaminate every window containing them.
+
     The window is a centred number of POINTS, 2*(window_size//2)+1, shrinking
     at the edges; `x` is not used, so on a non-uniform grid the window width in
     x varies along the curve.

@@ -1,3 +1,28 @@
+"""
+Diagnostic plots of the d4creg regrouping workflow.
+
+Called by `toscana.workflows.d4creg` when plotting is requested in the
+d4creg parameter file. Each plot opens a new figure and calls
+``plt.show()``; nothing is saved.
+
+Public names
+------------
+defColors
+    Fixed list of 20 CSS4 colours (hex strings).
+makePlotsA
+    Three figures in angle: individual numors, individual detector banks,
+    total diffractogram.
+makePlotsQ
+    One figure: total diffractogram in Q.
+
+Inputs (from `toscana.dataio`): ``runInfo`` is the d4creg run dictionary
+(keys used: ``"file"``, ``"nbrNumors"``, ``"angular_scale"`` (min, max, step
+in degrees), ``"q_scale"`` (min, max, step in 1/Å), ``"normalisation"``
+(mode, time in s, monitor counts)); ``head`` the list of numor headers;
+``numor`` the array of numors, shape (n_numors, ≥2, n_points), rows 0 and 1
+being angle (degrees) and counts.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -9,6 +34,14 @@ import numpy as np
 def defColors() -> list[str]:  # noqa: N802 (legacy API)
     """
     Define a deterministic list of CSS4 colors (legacy behavior).
+
+    Returns
+    -------
+    list of str
+        20 hex colour strings from ``matplotlib.colors.CSS4_COLORS``, in the
+        order red, blue, green, black, cyan, magenta, gold, orange, brown,
+        gray, silver, pink, purple, navy, teal, lime, olive, salmon, maroon,
+        chartreuse (indices 0-19).
     """
     import matplotlib.colors as mcolors
 
@@ -44,6 +77,45 @@ def makePlotsA(  # noqa: N802 (legacy API)
 ) -> None:
     """
     Plot angular-scale diffractograms (legacy behavior).
+
+    Three figures, each followed by ``plt.show()``:
+
+    1. "Individual numors (<nbrNumors> in total) for sample <file>", 9 x 5
+       inches: ``numor[i, 1, :]`` versus ``numor[i, 0, :]`` for every numor,
+       colour ``colors[i % 20]``, label ``head[i]["numor"]`` (no legend is
+       drawn).
+    2. "Individual detectors for <file>", 9 x 6: ``diffA[i, 1, :]`` versus
+       ``diffA[i, 0, :]`` for the detector banks i = 1..9, labels
+       "Detector i", with legend.
+    3. "Diffractogram for <file>", 9 x 6: the total ``diffA[0]``, solid
+       line, label `file`, with legend.
+
+    All three use the abscissa range ``runInfo["angular_scale"][0:2]``
+    (degrees) and the ordinate range 0.9 × min to 1.1 × max of the TOTAL
+    diffractogram ``diffA[0, 1, :]`` (NaN ignored), so individual numors or
+    banks may fall outside. The ordinate label is "Counts/(<N> monitor counts)" with N =
+    ``runInfo["normalisation"][2]`` when ``runInfo["normalisation"][0] ==
+    "monitor"``, otherwise "Counts/(<t> seconds)" with t =
+    ``runInfo["normalisation"][1]``.
+
+    Parameters
+    ----------
+    runInfo : Mapping[str, Any]
+        d4creg run dictionary; keys ``"nbrNumors"``, ``"file"``,
+        ``"angular_scale"``, ``"normalisation"``.
+    diffA : ndarray, shape (10, ≥2, n_angles)
+        Regrouped diffractograms from `toscana.dataio.d4creg_outputs.getDiffA`:
+        index 0 the total, 1..9 the detector banks; row 0 the angle
+        (degrees), row 1 the counts.
+    head : sequence of mappings
+        Numor headers; ``head[i]["numor"]`` is used as label.
+    numor : ndarray, shape (n_numors, ≥2, n_points)
+        Individual numors; rows 0 (angle) and 1 (counts) are plotted.
+
+    Raises
+    ------
+    KeyError, IndexError
+        If a key is missing or `diffA` has fewer than 10 entries.
     """
     import matplotlib.pyplot as plt
 
@@ -115,6 +187,25 @@ def makePlotsQ(  # noqa: N802 (legacy API)
 ) -> None:
     """
     Plot Q-scale diffractograms (legacy behavior).
+
+    One 9 x 6 figure "Diffractogram for <file>": ``diffQbin[:, 1]`` versus
+    ``diffQbin[:, 0]``, red solid line, label `file`, abscissa "Momentum
+    transfer (1/Å)" over ``runInfo["q_scale"][0:2]``, ordinate range 0.9 ×
+    min to 1.1 × max of the counts (NaN ignored), legend, grid, then
+    ``plt.show()``. The ordinate label is "Counts/(<N> monitor counts)" with N =
+    ``runInfo["normalisation"][2]`` when ``runInfo["normalisation"][0] ==
+    "monitor"``, otherwise "Counts/(<t> seconds)" with t =
+    ``runInfo["normalisation"][1]``.
+
+    Parameters
+    ----------
+    runInfo : Mapping[str, Any]
+        d4creg run dictionary; keys ``"file"``, ``"q_scale"``,
+        ``"normalisation"``.
+    diffQbin : ndarray, shape (n_q, ≥2)
+        Diffractogram rebinned in Q; column 0 Q (1/Å), column 1 counts.
+    head, numor
+        Unused; kept for symmetry with `makePlotsA`.
     """
     import matplotlib.pyplot as plt
 

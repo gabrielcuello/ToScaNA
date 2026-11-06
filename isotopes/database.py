@@ -1,5 +1,28 @@
 """
 Database of isotope properties for neutron scattering.
+
+Values from "Bound Scattering Lengths and Cross Sections of the Elements and
+Their Isotopes", Appendix 2 of Neutron Scattering Fundamentals, vol. 44.
+Read through `toscana.isotopes.core.Element`.
+
+Public names
+------------
+NOMBRES
+    Column names (27). The table rows contain only the first 22 (``symbol``
+    to ``contrast``); ``neut``, ``bcoh``, ``binc``, ``scoh_bound``,
+    ``sinc_bound`` are computed by `Element`.
+UNITS
+    Units of each column (``"-"`` when dimensionless or not given):
+    weight in u ("uma"), abundance in %, scattering lengths in fm, cross
+    sections in barns.
+ISOTOPE_DICT
+    ``{key: tuple}``; key is the symbol for a natural element (``"Ni"``,
+    iso ``"nat"``) or symbol + mass number for an isotope (``"Ni58"``),
+    plus ``"n1"`` (neutron), ``"H1"``, ``"H2"``, ``"H3"`` (proton, deuteron,
+    triton). Missing values are the string ``"NULL"``.
+
+Audit 2026-11, C16: vanadium has b_coh = -0.443 fm and
+σ_coh = 4π(0.443)²/100 = 0.02466 b, σ_sca = 5.10466 b.
 """
 
 from __future__ import annotations
