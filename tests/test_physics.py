@@ -39,6 +39,12 @@ class TestCrystallography(unittest.TestCase):
                     for h, k, l in hkl]
         np.testing.assert_allclose(reflections_fcc(lam, 0.0, a)[:10], expected, atol=1e-9)
 
+    def test_default_lattice_is_ni_3_52(self) -> None:
+        from toscana.physics.crystallography import NI_LATTICE_PARAMETER
+
+        self.assertEqual(NI_LATTICE_PARAMETER, 3.52)
+        np.testing.assert_array_equal(reflections_fcc(0.5, 0.0), reflections_fcc(0.5, 0.0, 3.52))
+
     def test_zero_angle_shift(self) -> None:
         np.testing.assert_allclose(
             reflections_fcc(0.5, 0.2)[:10], reflections_fcc(0.5, 0.0)[:10] + 0.2

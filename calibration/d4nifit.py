@@ -7,7 +7,7 @@ import numpy as np
 from toscana.data.xy import DataXYE
 from toscana.math.fitting import fittingRange
 from toscana.models.ni import niPeaks10
-from toscana.physics.crystallography import reflections_fcc
+from toscana.physics.crystallography import NI_LATTICE_PARAMETER, reflections_fcc
 from toscana.utils.dates import getDate
 
 if TYPE_CHECKING:
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 def setting_model_d4nifit(  # noqa: N802 (legacy API)
-    nifile: str, zac_ini: float = 0.0
+    nifile: str, zac_ini: float = 0.0, lattice: float = NI_LATTICE_PARAMETER
 ) -> tuple[
     list[float],
     list[float],
@@ -27,14 +27,15 @@ def setting_model_d4nifit(  # noqa: N802 (legacy API)
     DataXYE,
 ]:
     """
-    Prepare initial parameters and plotting limits for Ni powder calibration (legacy behavior).
+    Prepare initial parameters and plotting limits for Ni powder calibration.
+
+    `lattice` is the Ni lattice parameter in Å (default 3.52 Å).
     """
     import matplotlib.pyplot as plt
 
     nickel = DataXYE(nifile)
     nickel.plot()
 
-    lattice = 3.52024
     wl_ini = 2 * lattice / np.sqrt(3.0) * np.sin(nickel.peaks_x[0] * np.pi / 360.0)
     print(f"Automatically calculated initial wavelength = {wl_ini:.3f} Å")
 
@@ -114,8 +115,8 @@ def setting_model_d4nifit(  # noqa: N802 (legacy API)
         "(333)",
     ]
 
-    refl = reflections_fcc(float(wl_ini), float(zac_ini), lattice=3.52024)[:10]
-    model = niPeaks10(nickel.x, *initial)
+    refl = reflections_fcc(float(wl_ini), float(zac_ini), lattice=lattice)[:10]
+    model = niPeaks10(nickel.x, *initial, lattice=lattice)
 
     plt.figure(figsize=(9, 6))
     plt.plot(nickel.x, model, "r-", label="Initial model")
@@ -153,10 +154,16 @@ def setting_model_d4nifit(  # noqa: N802 (legacy API)
 
 
 def fitting_model_d4nifit(  # noqa: N802 (legacy API)
-    nickel: DataXYE, limits: list[float], initial: list[float]
+    nickel: DataXYE,
+    limits: list[float],
+    initial: list[float],
+    lattice: float = NI_LATTICE_PARAMETER,
 ) -> lm.model.ModelResult:
     """
-    Build and fit the Ni powder model for wavelength calibration (legacy behavior).
+    Build and fit the Ni powder model for wavelength calibration.
+
+    `lattice` is the Ni lattice parameter in Å (default 3.52 Å). It is held
+    fixed: the fitted wavelength scales linearly with it.
     """
     import lmfit as lm
 
@@ -171,6 +178,7 @@ def fitting_model_d4nifit(  # noqa: N802 (legacy API)
     gmodel.set_param_hint("quad", vary=False)
     gmodel.set_param_hint("wavelength", vary=True)
     gmodel.set_param_hint("twotheta0", vary=True)
+    gmodel.set_param_hint("lattice", value=lattice, vary=False)
     for i in range(10):
         gmodel.set_param_hint(f"A{i}", vary=True)
     for i in range(10):
@@ -218,6 +226,7 @@ def fitting_model_d4nifit(  # noqa: N802 (legacy API)
         S7=initial[32],
         S8=initial[33],
         S9=initial[34],
+        lattice=lattice,
     )
     return result
 
@@ -267,8 +276,13 @@ def showing_results_d4nifit(  # noqa: N802 (legacy API)
                 float(param.value), float(param.stderr or 0.0)
             )
 
-    model = niPeaks10(nickel.x, *nickel_par)
-    refl = reflections_fcc(nickel_par[3], nickel_par[4], lattice=3.52024)[:10]
+    model = niPeaks10(nickel.x, *nickel_par)  # includes the (fixed) lattice
+    lattice = (
+        float(result.params["lattice"].value)
+        if "lattice" in result.params
+        else NI_LATTICE_PARAMETER
+    )
+    refl = reflections_fcc(nickel_par[3], nickel_par[4], lattice=lattice)[:10]
 
     def _stderr(name: str) -> float:
         v = nickel_table[name][1]

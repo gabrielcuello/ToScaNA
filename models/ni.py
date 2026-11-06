@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from toscana.math.line_shapes import GaussianA
-from toscana.physics.crystallography import reflections_fcc
+from toscana.physics.crystallography import NI_LATTICE_PARAMETER, reflections_fcc
 
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
@@ -48,13 +48,18 @@ def niPeaks10(
     S7: float,
     S8: float,
     S9: float,
+    lattice: float = NI_LATTICE_PARAMETER,
 ) -> NDArray[np.float64]:
     """
-    Evaluate a model with 10 asymmetric Gaussian peaks for Ni fcc reflections (legacy behavior).
+    Evaluate a model with 10 asymmetric Gaussian peaks for Ni fcc reflections.
+
+    `lattice` is the Ni lattice parameter in Å (default 3.52 Å). In an lmfit
+    fit it is a parameter and must be kept fixed: λ and `lattice` are
+    fully correlated (only λ/a is determined by the peak positions).
     """
     q = np.asarray(x, dtype=np.float64)
     C0, C1, C2, C3, C4, C5, C6, C7, C8, C9 = reflections_fcc(
-        wavelength, twotheta0, lattice=3.52024
+        wavelength, twotheta0, lattice=lattice
     )[:10]
 
     diff = (

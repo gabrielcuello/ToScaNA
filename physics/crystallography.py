@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 
+# Default lattice parameter of the Ni powder calibration standard (fcc), in Å.
+# Every function using it accepts a `lattice` argument to override it.
+NI_LATTICE_PARAMETER = 3.52
+
 
 def sf_fcc(miller_h: int, miller_k: int, miller_l: int) -> np.complex128:
     """
@@ -39,12 +43,15 @@ def sf_sc(miller_h: int, miller_k: int, miller_l: int) -> float:
 
 
 def reflections_fcc(
-    wavelength: float = 0.5, twotheta0: float = 0.0, lattice: float = 3.52024
+    wavelength: float = 0.5,
+    twotheta0: float = 0.0,
+    lattice: float = NI_LATTICE_PARAMETER,
 ) -> np.ndarray:
     """
     Produce a list of the angular positions for a fcc lattice (legacy behavior).
 
     Returns angles in degrees for allowed reflections in the range [0, 180].
+    `lattice` is the cubic lattice parameter in Å (default: Ni, 3.52 Å).
     """
     moduleMax = int(2.0 * lattice / wavelength)
     sinus: list[float] = []

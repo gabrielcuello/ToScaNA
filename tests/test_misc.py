@@ -131,6 +131,41 @@ class TestNiCalibration(unittest.TestCase):
             self.assertEqual(captured[f"A{i}"], initial[5 + i], f"A{i}")
             self.assertEqual(captured[f"G{i}"], initial[15 + i], f"G{i}")
             self.assertEqual(captured[f"S{i}"], initial[25 + i], f"S{i}")
+        self.assertEqual(captured["lattice"], 3.52)
+        with mock.patch.dict(sys.modules, {"lmfit": fake}):
+            quiet(fitting_model_d4nifit, nickel, [0, 100, 0, 10], initial, lattice=3.524)
+        self.assertEqual(captured["lattice"], 3.524)
+
+    def test_real_fit_lattice_fixed_and_wavelength_scales(self) -> None:
+        try:
+            import lmfit  # noqa: F401
+        except ImportError:
+            self.skipTest("lmfit not installed")
+        from toscana.calibration.d4nifit import fitting_model_d4nifit
+        from toscana.models.ni import niPeaks10
+
+        lam_true = 0.4986
+        pars = [1.0, 0.0, 0.0, lam_true, -0.1] + [1.0, 0.5, 0.5, 0.7, 0.25, 0.12, 0.4, 0.4, 0.3, 0.35] \
+            + [0.0] * 10 + [0.2] * 10
+        x = np.arange(10.0, 45.0, 0.05)
+        y = niPeaks10(x, *pars)  # synthetic pattern with a = 3.52 Å
+        nickel = types.SimpleNamespace(x=x, y=y, e=np.full_like(x, 0.01))
+        start = list(pars)
+        start[3] = lam_true * 1.002
+        start[4] = -0.08
+        limits = [10.0, 45.0, -1.0, 100.0]
+
+        res = quiet(fitting_model_d4nifit, nickel, limits, start)
+        self.assertFalse(res.params["lattice"].vary)
+        self.assertEqual(res.params["lattice"].value, 3.52)
+        self.assertAlmostEqual(res.params["wavelength"].value, lam_true, places=6)
+
+        res2 = quiet(fitting_model_d4nifit, nickel, limits, start, lattice=3.524)
+        self.assertEqual(res2.params["lattice"].value, 3.524)
+        # Same peak positions with a different a: λ scales as a (λ/a fixed)
+        self.assertAlmostEqual(
+            res2.params["wavelength"].value, lam_true * 3.524 / 3.52, places=6
+        )
 
 
 class TestMeasurementShowTable(unittest.TestCase):
