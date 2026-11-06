@@ -36,7 +36,7 @@ def setting_model_d4nifit(  # noqa: N802 (legacy API)
 
     lattice = 3.52024
     wl_ini = 2 * lattice / np.sqrt(3.0) * np.sin(nickel.peaks_x[0] * np.pi / 360.0)
-    print(f"Automatically calculated initial wavelength = {wl_ini:.3f} Ã…")
+    print(f"Automatically calculated initial wavelength = {wl_ini:.3f} Å")
 
     flat_valley_x = int((nickel.peaks_x[1] + nickel.peaks_x[2]) / 2)
     for i in range(len(nickel.x)):
@@ -124,11 +124,11 @@ def setting_model_d4nifit(  # noqa: N802 (legacy API)
 
     plt.legend(loc="best")
     plt.title("Nickel powder diffractogram: Starting point")
-    plt.xlabel(r"$2\theta$ (Ëš)")
+    plt.xlabel(r"$2\theta$ (˚)")
     plt.ylabel("Intensity (arb. units)")
 
-    wlength = r"$\lambda = {:.3f}$ Ã…".format(float(wl_ini))
-    zac = r"$2\theta_0 = {:.3f}$Ëš".format(float(zac_ini))
+    wlength = r"$\lambda = {:.3f}$ Å".format(float(wl_ini))
+    zac = r"$2\theta_0 = {:.3f}$˚".format(float(zac_ini))
     plt.text(
         xy_res[0],
         xy_res[1],
@@ -138,7 +138,7 @@ def setting_model_d4nifit(  # noqa: N802 (legacy API)
 
     planes_fit = ""
     for i in range(10):
-        planes_fit += "{}: {:.1f}Ëš\n".format(planes[i], float(refl[i]))
+        planes_fit += "{}: {:.1f}˚\n".format(planes[i], float(refl[i]))
     plt.text(
         xy_ref[0],
         xy_ref[1],
@@ -188,9 +188,11 @@ def fitting_model_d4nifit(  # noqa: N802 (legacy API)
         twotheta0=initial[4],
         A0=initial[5],
         A1=initial[6],
-        A2=initial[6],
-        A3=initial[7],
-        A4=initial[8],
+        # Bug fix vs legacy: A2..A4 were initial[6..8] (shifted by one, so
+        # initial[9] was never used and A1/A2 started from the same value).
+        A2=initial[7],
+        A3=initial[8],
+        A4=initial[9],
         A5=initial[10],
         A6=initial[11],
         A7=initial[12],
@@ -257,11 +259,11 @@ def showing_results_d4nifit(  # noqa: N802 (legacy API)
         ]
         nickel_par.append(float(param.value))
         if param.name == "wavelength":
-            wlength = r"$\lambda = ({:.6f} \pm {:.6f})$ Ã…".format(
+            wlength = r"$\lambda = ({:.6f} \pm {:.6f})$ Å".format(
                 float(param.value), float(param.stderr or 0.0)
             )
         if param.name == "twotheta0":
-            zac = r"$2\theta_0 = ({:.6f} \pm {:.6f})$Ëš".format(
+            zac = r"$2\theta_0 = ({:.6f} \pm {:.6f})$˚".format(
                 float(param.value), float(param.stderr or 0.0)
             )
 
@@ -274,23 +276,23 @@ def showing_results_d4nifit(  # noqa: N802 (legacy API)
 
     print(
         f"{result.params['I0'].name:>10} = "
-        f"{float(nickel_table['I0'][0]):>9f} Â± {_stderr('I0'):>9f}         {float(nickel_table['I0'][2]):>7.3%}"
+        f"{float(nickel_table['I0'][0]):>9f} ± {_stderr('I0'):>9f}         {float(nickel_table['I0'][2]):>7.3%}"
     )
     print(
         f"{result.params['slope'].name:>10} = "
-        f"{float(nickel_table['slope'][0]):>9f} Â± {_stderr('slope'):>9f}         {float(nickel_table['slope'][2]):>7.3%}"
+        f"{float(nickel_table['slope'][0]):>9f} ± {_stderr('slope'):>9f}         {float(nickel_table['slope'][2]):>7.3%}"
     )
     print(
         f"{result.params['quad'].name:>10} = "
-        f"{float(nickel_table['quad'][0]):>9f} Â± {_stderr('quad'):>9f}         {float(nickel_table['quad'][2]):>7.3%}"
+        f"{float(nickel_table['quad'][0]):>9f} ± {_stderr('quad'):>9f}         {float(nickel_table['quad'][2]):>7.3%}"
     )
     print(
         f"{result.params['wavelength'].name:>10} = "
-        f"({float(nickel_table['wavelength'][0]):>8f} Â± {_stderr('wavelength'):>9f}) Ã…      {float(nickel_table['wavelength'][2]):>7.3%}"
+        f"({float(nickel_table['wavelength'][0]):>8f} ± {_stderr('wavelength'):>9f}) Å      {float(nickel_table['wavelength'][2]):>7.3%}"
     )
     print(
         f"{result.params['twotheta0'].name:>10} = "
-        f"({float(nickel_table['twotheta0'][0]):>8.5f} Â± {_stderr('twotheta0'):>9f})Ëš       {float(nickel_table['twotheta0'][2]):>7.3%}"
+        f"({float(nickel_table['twotheta0'][0]):>8.5f} ± {_stderr('twotheta0'):>9f})˚       {float(nickel_table['twotheta0'][2]):>7.3%}"
     )
 
     print(103 * "-")
@@ -303,8 +305,8 @@ def showing_results_d4nifit(  # noqa: N802 (legacy API)
         ai = f"A{i}"
         si = f"S{i}"
         print(
-            f"|{planes[i]:>6s} | {float(refl[i]):>8.5f} | {float(nickel_table[ai][0]):>8.5f} Â± {_stderr(ai):>9f}  |  {float(nickel_table[ai][2]):>8.3%} ||"
-            f"{float(nickel_table[si][0]):>8.5f} Â± {_stderr(si):>9f}  |  {float(nickel_table[si][2]):>9.3%} |"
+            f"|{planes[i]:>6s} | {float(refl[i]):>8.5f} | {float(nickel_table[ai][0]):>8.5f} ± {_stderr(ai):>9f}  |  {float(nickel_table[ai][2]):>8.3%} ||"
+            f"{float(nickel_table[si][0]):>8.5f} ± {_stderr(si):>9f}  |  {float(nickel_table[si][2]):>9.3%} |"
         )
     print(103 * "-")
 
@@ -315,7 +317,7 @@ def showing_results_d4nifit(  # noqa: N802 (legacy API)
 
     plt.legend(loc="best")
     plt.title("Final fit for " + nickel.filename + ", " + getDate())
-    plt.xlabel(r"$2\theta$" + " (Ëš)")
+    plt.xlabel(r"$2\theta$" + " (˚)")
     plt.ylabel("Intensity (arb. units)")
 
     fit_report = result.fit_report()
@@ -356,7 +358,7 @@ def showing_results_d4nifit(  # noqa: N802 (legacy API)
 
     planes_fit = ""
     for i in range(10):
-        planes_fit += "{}: {:.1f}Ëš\n".format(planes[i], float(refl[i]))
+        planes_fit += "{}: {:.1f}˚\n".format(planes[i], float(refl[i]))
     plt.text(
         xy_ref[0],
         xy_ref[1],

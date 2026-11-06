@@ -45,7 +45,7 @@ def getAtomicDensity(density: float = 1.0, molarMass: float = 6.0) -> float:
 
 def getDensity(atomic_density: float = 0.1, molarM: float = 6.0) -> float:
     """
-    Calculate the macroscopic density (g/cmÂ³) from atomic density (atoms/Ã…Â³).
+    Calculate the macroscopic density (g/cm³) from atomic density (atoms/Å³).
 
     Notes
     -----
@@ -87,7 +87,7 @@ def getFreeXS(BoundXS: float = 5.08, A: float = 50.9415) -> float:
 
 def getAbsXS(AbsXS: float = 5.08, wavelength: float = 1.8089) -> float:
     """
-    Scale absorption cross section (barns) by wavelength (Ã…).
+    Scale absorption cross section (barns) by wavelength (Å).
 
     Legacy formula:
         sigma_abs(lambda) = sigma_thermal * lambda / 1.8089

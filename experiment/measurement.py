@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import cmath
+import contextlib
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING
 
@@ -211,11 +212,20 @@ class Measurement:
         )
 
     def showTable(self, outfile: str | None = None) -> None:  # noqa: N802 (legacy API)
-        import sys
+        """
+        Print the main input parameters, to stdout or to `outfile`.
 
+        Bug fix vs legacy: legacy replaced `sys.stdout` with an unclosed file
+        and then set it to `sys.__stdout__`, which broke Jupyter output and
+        leaked the file on errors.
+        """
         if outfile:
-            sys.stdout = open(outfile, "w")
+            with open(outfile, "w") as fh, contextlib.redirect_stdout(fh):
+                self._print_table()
+        else:
+            self._print_table()
 
+    def _print_table(self) -> None:
         print(120 * "-")
         print(f"Input parameters from {self.inputPar['<par>'][1]}")
         print("".format())
@@ -261,6 +271,3 @@ class Measurement:
             )
         )
         print("".format())
-
-        if outfile:
-            sys.stdout = sys.__stdout__

@@ -67,6 +67,36 @@ def fit_and_find_extremum(
     return extremum_x, extremum_y, fit_values
 
 
+def _select_in_rectangle(
+    xmin: float,
+    xmax: float,
+    ymin: float,
+    ymax: float,
+    x_in: NDArray[np.float64],
+    y_in: NDArray[np.float64],
+    e_in: NDArray[np.float64],
+    where: str,
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+    """Points with xmin <= x <= xmax and ymin <= y <= ymax, as (n, 1) columns."""
+    if len(x_in) != len(y_in):
+        print(f"ERROR: Ordinate and abcissa must have the same length in {where}.")
+    if (xmax < xmin) or (ymax < ymin):
+        print(f"ERROR: The limits of the rectangle are wrong in {where}.")
+
+    mask = (x_in >= xmin) & (x_in <= xmax) & (y_in >= ymin) & (y_in <= ymax)
+    n = int(np.count_nonzero(mask))
+    if n < 10:
+        print(f"WARNING: Less than 10 points for the fitting in {where}.")
+    if n == 0:
+        print(f"ERROR: No points for the fitting in {where}.")
+
+    return (
+        x_in[mask].reshape(-1, 1),
+        y_in[mask].reshape(-1, 1),
+        e_in[mask].reshape(-1, 1),
+    )
+
+
 def fittingRange0(
     xmin: float,
     xmax: float,
@@ -77,44 +107,18 @@ def fittingRange0(
     errors: ArrayLike,
 ) -> NDArray[np.float64]:
     """
-    Define a subset of points inside a rectangle (legacy behavior).
+    Define a subset of points inside a rectangle.
 
-    Returns a 3-column matrix (x, y, e) with x/y/e shaped as (n, 1) columns.
+    Returns a 3-column matrix (x, y, e).
     """
-    x_in = np.asarray(abcissas, dtype=np.float64)
-    y_in = np.asarray(ordinates, dtype=np.float64)
-    e_in = np.asarray(errors, dtype=np.float64)
-
-    if len(x_in) != len(y_in):
-        print(
-            "ERROR: Ordinate and abcissa must have the same length in function fittingRange."
-        )
-    if (xmax < xmin) or (ymax < ymin):
-        print(
-            "ERROR: The limits of the rectangle are wrong in the function fittingRange."
-        )
-
-    x_range: list[float] = []
-    y_range: list[float] = []
-    e_range: list[float] = []
-    for i in range(len(x_in)):
-        if (x_in[i] >= xmin) and (x_in[i] <= xmax):
-            if (y_in[i] >= ymin) and (y_in[i] <= ymax):
-                x_range.append(float(x_in[i]))
-                y_range.append(float(y_in[i]))
-                e_range.append(float(e_in[i]))
-
-    if len(x_range) < 10:
-        print("WARNING: Less than 10 points for the fitting in fittingRange.")
-    if len(x_range) == 0:
-        print("ERROR: No points for the fitting in fittingRange.")
-
-    x = np.asarray(x_range, dtype=np.float64).reshape(-1, 1)
-    y = np.asarray(y_range, dtype=np.float64).reshape(-1, 1)
-    e = np.asarray(e_range, dtype=np.float64).reshape(-1, 1)
-    limited = np.concatenate((x, y), axis=1)
-    limited = np.concatenate((limited, e), axis=1)
-    return np.asarray(limited, dtype=np.float64)
+    x, y, e = _select_in_rectangle(
+        xmin, xmax, ymin, ymax,
+        np.asarray(abcissas, dtype=np.float64),
+        np.asarray(ordinates, dtype=np.float64),
+        np.asarray(errors, dtype=np.float64),
+        "function fittingRange",
+    )
+    return np.concatenate((x, y, e), axis=1)
 
 
 def fittingRange(
@@ -127,85 +131,34 @@ def fittingRange(
     errors: ArrayLike,
 ) -> Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
-    Define a subset of points inside a rectangle (legacy behavior).
+    Define a subset of points inside a rectangle.
 
     Returns 3 separate (n, 1) arrays: x, y, e.
     """
-    x_in = np.asarray(abcissas, dtype=np.float64)
-    y_in = np.asarray(ordinates, dtype=np.float64)
-    e_in = np.asarray(errors, dtype=np.float64)
-
-    if len(x_in) != len(y_in):
-        print(
-            "ERROR: Ordinate and abcissa must have the same length in function fittingRange."
-        )
-    if (xmax < xmin) or (ymax < ymin):
-        print(
-            "ERROR: The limits of the rectangle are wrong in the function fittingRange."
-        )
-
-    x_range: list[float] = []
-    y_range: list[float] = []
-    e_range: list[float] = []
-    for i in range(len(x_in)):
-        if (x_in[i] >= xmin) and (x_in[i] <= xmax):
-            if (y_in[i] >= ymin) and (y_in[i] <= ymax):
-                x_range.append(float(x_in[i]))
-                y_range.append(float(y_in[i]))
-                e_range.append(float(e_in[i]))
-
-    if len(x_range) < 10:
-        print("WARNING: Less than 10 points for the fitting in fittingRange.")
-    if len(x_range) == 0:
-        print("ERROR: No points for the fitting in fittingRange.")
-
-    x = np.asarray(x_range, dtype=np.float64).reshape(-1, 1)
-    y = np.asarray(y_range, dtype=np.float64).reshape(-1, 1)
-    e = np.asarray(e_range, dtype=np.float64).reshape(-1, 1)
-    return x, y, e
+    return _select_in_rectangle(
+        xmin, xmax, ymin, ymax,
+        np.asarray(abcissas, dtype=np.float64),
+        np.asarray(ordinates, dtype=np.float64),
+        np.asarray(errors, dtype=np.float64),
+        "function fittingRange",
+    )
 
 
 def fit_range(
     xmin: float, xmax: float, ymin: float, ymax: float, data: ArrayLike
 ) -> NDArray[np.float64]:
     """
-    Define a rectangle in the x,y plane (legacy behavior).
+    Define a subset of points inside a rectangle.
 
     Parameters
     ----------
     data : array_like
         A 3-column matrix containing x, y, e.
+
+    Returns a 3-column matrix (x, y, e).
     """
     dat = np.asarray(data, dtype=np.float64)
-    x_dat = dat[:, 0]
-    y_dat = dat[:, 1]
-    e_dat = dat[:, 2]
-
-    if len(x_dat) != len(y_dat):
-        print(
-            "ERROR: Ordinate and abcissa must have the same length in the function fit_range."
-        )
-    if (xmax < xmin) or (ymax < ymin):
-        print("ERROR: The limits of the rectangle are wrong in the function fit_range.")
-
-    x_range: list[float] = []
-    y_range: list[float] = []
-    e_range: list[float] = []
-    for i in range(len(x_dat)):
-        if (x_dat[i] >= xmin) and (x_dat[i] <= xmax):
-            if (y_dat[i] >= ymin) and (y_dat[i] <= ymax):
-                x_range.append(float(x_dat[i]))
-                y_range.append(float(y_dat[i]))
-                e_range.append(float(e_dat[i]))
-
-    if (len(x_range) < 10) or (len(y_range) < 0):
-        print("WARNING: Less than 10 points for the fitting in the function fit_range.")
-    if (len(x_range) == 0) or (len(y_range) == 0):
-        print("ERROR: No points for the fitting in the function fit_range.")
-
-    x = np.asarray(x_range, dtype=np.float64).reshape(-1, 1)
-    y = np.asarray(y_range, dtype=np.float64).reshape(-1, 1)
-    e = np.asarray(e_range, dtype=np.float64).reshape(-1, 1)
-    limited = np.concatenate((x, y), axis=1)
-    limited = np.concatenate((limited, e), axis=1)
-    return np.asarray(limited, dtype=np.float64)
+    x, y, e = _select_in_rectangle(
+        xmin, xmax, ymin, ymax, dat[:, 0], dat[:, 1], dat[:, 2], "the function fit_range"
+    )
+    return np.concatenate((x, y, e), axis=1)

@@ -120,7 +120,8 @@ def wsum2(
     elif w1 == 0:
         for i in range(length):
             ysum.append(float(w2 * y2[i]))
-            esum.append(float(w2 * e2[i]))
+            # Bug fix vs legacy: |w2| (a negative weight gave negative errors)
+            esum.append(float(abs(w2) * e2[i]))
     elif w2 == 0:
         if (w1 > 0) and (w1 <= 1):
             for i in range(length):
@@ -129,8 +130,11 @@ def wsum2(
                     float(np.sqrt(w1**2 * e1[i] ** 2 + (1.0 - w1) ** 2 * e2[i] ** 2))
                 )
         else:
-            print("--- Error in the binary sum (wsum2).")
-            print("--- The the weight of first set of data should be between 0 and 1.")
+            # Bug fix vs legacy: legacy printed an error and then crashed in
+            # np.concatenate with a confusing message.
+            raise ValueError(
+                "wsum2: with w2 = 0 the weight of the first set must be in (0, 1]."
+            )
     else:
         for i in range(length):
             ysum.append(float(w1 * y1[i] + w2 * y2[i]))

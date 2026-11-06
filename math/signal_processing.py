@@ -29,6 +29,12 @@ def smooth_curve(
     -------
     numpy.ndarray
         Array of smoothed y values.
+
+    Notes
+    -----
+    The window is a centred number of POINTS, 2*(window_size//2)+1, shrinking
+    at the edges; `x` is not used, so on a non-uniform grid the window width in
+    x varies along the curve.
     """
     y_arr = np.asarray(y)
     window_size = int(smoothing_factor * len(y_arr))

@@ -142,8 +142,11 @@ class Elemento:
             Override default values from ISOTOPE_DICT.
         """
         if iso_name not in ISOTOPE_DICT:
-            print("\n The isotope you wrote does not exist in this dictionary")
-            return
+            # Bug fix vs legacy: legacy printed a message and returned a
+            # half-initialised object (AttributeError later on).
+            raise ValueError(
+                f"The isotope {iso_name!r} does not exist in this dictionary."
+            )
 
         # Load data from dictionary
         data_tuple = ISOTOPE_DICT[iso_name]
@@ -186,8 +189,10 @@ class Elemento:
         self.data["bcoh"] = bcoh
         self.data["binc"] = binc
 
-        scoh_bound = 4 * np.pi * bcoh * bcoh.conjugate()
-        sinc_bound = 4 * np.pi * binc * binc.conjugate()
+        # Bound cross sections in barns: 4π|b|^2 with b in fm gives fm^2, and
+        # 1 barn = 100 fm^2. (Bug fix vs legacy: no /100, values were 100x.)
+        scoh_bound = 4 * np.pi * bcoh * bcoh.conjugate() / 100.0
+        sinc_bound = 4 * np.pi * binc * binc.conjugate() / 100.0
 
         # Rounding logic from legacy content
         self.data["scoh_bound"] = complex(

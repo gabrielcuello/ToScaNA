@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy import integrate  # type: ignore[import-untyped]
+from scipy import integrate, special  # type: ignore[import-untyped]
 
 from .line_shapes import step
 from .windows import Lorch, LorchN
@@ -14,18 +14,15 @@ if TYPE_CHECKING:
 
 def getSineIntegral(x: float) -> float:  # noqa: N802 (legacy API)
     """
-    Evaluate the Sine Integral function via numerical integration (legacy behavior).
+    Evaluate the sine integral Si(x) = ∫_0^x sin(t)/t dt.
+
+    Notes
+    -----
+    Bug fix vs legacy: legacy integrated numerically on a grid ending at
+    x(1 - 1e-4) (relative error ~1e-4) and returned NaN for x = 0. The exact
+    `scipy.special.sici` is used instead.
     """
-    npoints = 10000
-    si: list[float] = []
-    t: list[float] = []
-    t.append(0.0)
-    si.append(1.0)
-    for i in range(1, npoints):
-        t.append(i * x / float(npoints))
-        si.append(float(np.sin(t[i]) / t[i]))
-    result = integrate.simpson(si, t)
-    return float(result)
+    return float(special.sici(x)[0])
 
 
 def getSineFT(  # noqa: N802 (legacy API)
@@ -38,7 +35,15 @@ def getSineFT(  # noqa: N802 (legacy API)
     w: int = 0,
 ) -> NDArray[np.float64] | None:
     """
-    Calculate a sine Fourier transform (legacy behavior).
+    Calculate a sine Fourier transform:
+
+        stf(u) = 2/π · c · ∫ (y(v) - s) · v · sin(v·u) · W(v) dv
+
+    Notes
+    -----
+    Bug fix vs legacy: with `w=0` (no window) legacy ignored `vmax` and always
+    integrated over the full range. The integral now stops at `vmax`; with the
+    default `vmax` (full range) results are unchanged.
     """
     nbr_v = len(vvec)
     nbr_y = len(yvec)
@@ -50,14 +55,19 @@ def getSineFT(  # noqa: N802 (legacy API)
     if (vmax <= 0) or (vmax > vvec[-1]):
         vmax = float(vvec[-1])
 
+    vv = np.asarray(vvec, dtype=np.float64)
+    yy = np.asarray(yvec, dtype=np.float64)
     win: NDArray[np.float64] = np.ones(nbr_v, dtype=np.float64)
     if w == 1:
-        win = LorchN(vvec, vmax)
+        win = LorchN(vv, vmax)
+    else:
+        keep = vv <= vmax
+        vv, yy, win = vv[keep], yy[keep], win[keep]
 
     stf: NDArray[np.float64] = np.zeros(len(uvec), dtype=np.float64)
     for i in range(len(uvec)):
-        integ = (yvec - s) * vvec * np.sin(vvec * uvec[i]) * win
-        stf[i] = 2.0 / np.pi * c * integrate.simpson(integ, vvec)
+        integ = (yy - s) * vv * np.sin(vv * uvec[i]) * win
+        stf[i] = 2.0 / np.pi * c * integrate.simpson(integ, x=vv)
     return stf
 
 
@@ -93,7 +103,6 @@ def sineFT(  # noqa: N802 (legacy API)
         for i in range(len(win)):
             win[i] = win[i] * qmax / float(integral_lorch)
 
-    delta_r = float(nr[1] - nr[0])
     for r in nr:
         integ = (soq - selfsca) * q * np.sin(q * r) * win
         result = 2.0 / np.pi * constant * integrate.simpson(integ, q)
@@ -105,12 +114,16 @@ def sineFT(  # noqa: N802 (legacy API)
         rdf.append(float(result * float(r) + 4.0 * np.pi * density * float(r) ** 2))
         tor.append(float(result + 4.0 * np.pi * density * float(r)))
 
-    for r in nr:
-        ind = 1 + int(float(r) / delta_r)
-        xr = nr[0:ind]
-        integ = np.array(rdf)[0:ind]
-        result = integrate.simpson(integ, xr)
-        run.append(float(result))
+    # Running coordination number N(r) = ∫_{r0}^{r} RDF dr'.
+    # Bug fix vs legacy: the slice end was computed as 1 + int(r/Δr), which
+    # assumes nr[0] = 0 and exact float division; even on a grid from 0 in
+    # steps of 0.02 Å, rounding (e.g. 0.58/0.02 = 28.999...) stopped the
+    # integral one point short at 16 of 400 points. The loop index is used now.
+    rdf_arr0 = np.asarray(rdf, dtype=np.float64)
+    nr_arr0 = np.asarray(nr, dtype=np.float64)
+    run.append(0.0)
+    for i in range(1, len(nr_arr0)):
+        run.append(float(integrate.simpson(rdf_arr0[: i + 1], x=nr_arr0[: i + 1])))
 
     rrr = np.array(nr, dtype=np.float64)
     pcf_arr = np.array(pcf, dtype=np.float64)
@@ -149,90 +162,57 @@ def backFT(  # noqa: N802 (legacy API)
     NDArray[np.float64],
 ]:
     """
-    Back Fourier transform of a PDF (legacy behavior).
+    Back Fourier transform of a pair distribution function g(r).
+
+    g(r) is first cut (set to 0) in the regions given by `cut`, transformed to
+    S(Q) = 1 + (4πρ/Q) ∫ r [g(r) - 1] sin(Qr) dr, and transformed back to real
+    space. Returns (S(Q), G(r), g(r), RDF(r), T(r), N(r)).
+
+    `cut` conventions:
+    - ``[-1]``: zero g(r) up to the last point where it is negative
+      (nothing is cut if g(r) is never negative);
+    - ``[r0, a1, b1, a2, b2, ...]`` (odd length): zero r < r0 and every open
+      interval (a_k, b_k).
+
+    Notes
+    -----
+    Bug fixes vs legacy: Q = 0 and r = 0 are handled with their analytic
+    limits (legacy produced NaN/inf); the running integral includes the
+    current point (legacy integrated up to r_{i-1}), matching `sineFT`;
+    `[-1]` with no negative value no longer zeroes the first two points;
+    any odd-length `cut` is accepted and an even length raises ValueError
+    (legacy silently ignored unsupported lengths).
     """
-    pdf_cut = pdf.copy()
-    if len(cut) == 1 and cut[0] == -1:
-        for i in range(len(pdf) - 1, 0, -1):
-            if pdf[i] < 0:
-                break
-        for j in range(i + 1):
-            pdf_cut[j] = 0.0
-    elif len(cut) == 1 and cut[0] > 0.0:
-        for i in range(len(pdf)):
-            if ar[i] < cut[0]:
-                pdf_cut[i] = 0.0
-    elif len(cut) == 3:
-        for i in range(len(pdf)):
-            if ar[i] < cut[0] or (cut[1] < ar[i] and ar[i] < cut[2]):
-                pdf_cut[i] = 0.0
-    elif len(cut) == 5:
-        for i in range(len(pdf)):
-            if (
-                ar[i] < cut[0]
-                or (cut[1] < ar[i] and ar[i] < cut[2])
-                or (cut[3] < ar[i] and ar[i] < cut[4])
-            ):
-                pdf_cut[i] = 0.0
-    elif len(cut) == 7:
-        for i in range(len(pdf)):
-            if (
-                ar[i] < cut[0]
-                or (cut[1] < ar[i] and ar[i] < cut[2])
-                or (cut[3] < ar[i] and ar[i] < cut[4])
-                or (cut[5] < ar[i] and ar[i] < cut[6])
-            ):
-                pdf_cut[i] = 0.0
-    elif len(cut) == 9:
-        for i in range(len(pdf)):
-            if (
-                ar[i] < cut[0]
-                or (cut[1] < ar[i] and ar[i] < cut[2])
-                or (cut[3] < ar[i] and ar[i] < cut[4])
-                or (cut[5] < ar[i] and ar[i] < cut[6])
-                or (cut[7] < ar[i] and ar[i] < cut[8])
-            ):
-                pdf_cut[i] = 0.0
-    elif len(cut) == 11:
-        for i in range(len(pdf)):
-            if (
-                ar[i] < cut[0]
-                or (cut[1] < ar[i] and ar[i] < cut[2])
-                or (cut[3] < ar[i] and ar[i] < cut[4])
-                or (cut[5] < ar[i] and ar[i] < cut[6])
-                or (cut[7] < ar[i] and ar[i] < cut[8])
-                or (cut[9] < ar[i] and ar[i] < cut[10])
-            ):
-                pdf_cut[i] = 0.0
-    elif len(cut) == 13:
-        for i in range(len(pdf)):
-            if (
-                ar[i] < cut[0]
-                or (cut[1] < ar[i] and ar[i] < cut[2])
-                or (cut[3] < ar[i] and ar[i] < cut[4])
-                or (cut[5] < ar[i] and ar[i] < cut[6])
-                or (cut[7] < ar[i] and ar[i] < cut[8])
-                or (cut[9] < ar[i] and ar[i] < cut[10])
-                or (cut[11] < ar[i] and ar[i] < cut[12])
-            ):
-                pdf_cut[i] = 0.0
+    ar = np.asarray(ar, dtype=np.float64)
+    qu = np.asarray(qu, dtype=np.float64)
+    pdf_cut = _apply_cut(ar, np.asarray(pdf, dtype=np.float64), cut)
 
     stf = getSineFT(ar, pdf_cut, qu, w=0)
     if stf is None:
         raise ValueError("backFT: getSineFT returned None (dimension mismatch).")
 
-    soq = 1 + 2.0 * np.pi**2 * density / qu * stf
+    soq = np.empty_like(qu)
+    pos_q = qu > 0
+    soq[pos_q] = 1 + 2.0 * np.pi**2 * density / qu[pos_q] * stf[pos_q]
+    # Q -> 0 limit: sin(Qr)/Q -> r
+    soq[~pos_q] = 1 + 4.0 * np.pi * density * float(
+        integrate.simpson(ar**2 * (pdf_cut - 1.0), x=ar)
+    )
+
     pcf = getSineFT(qu, soq, ar, w=0)
     if pcf is None:
         raise ValueError("backFT: getSineFT returned None (dimension mismatch).")
 
-    pdf_new = 1 + pcf / 4.0 / np.pi / density / ar
+    # Same convention as sineFT: g(r) = 0 for r <= 0
+    pdf_new = np.zeros_like(ar)
+    pos_r = ar > 0
+    pdf_new[pos_r] = 1 + pcf[pos_r] / 4.0 / np.pi / density / ar[pos_r]
     rdf = 4.0 * np.pi * density * ar * ar * pdf_new
-    tor = rdf / ar
+    tor = 4.0 * np.pi * density * ar * pdf_new
 
     run = np.zeros(len(ar), dtype=np.float64)
     for i in range(1, len(ar)):
-        run[i] = integrate.simpson(rdf[0:i], ar[0:i])
+        run[i] = integrate.simpson(rdf[: i + 1], x=ar[: i + 1])
 
     return (
         np.asarray(soq, dtype=np.float64),
@@ -242,3 +222,25 @@ def backFT(  # noqa: N802 (legacy API)
         np.asarray(tor, dtype=np.float64),
         np.asarray(run, dtype=np.float64),
     )
+
+
+def _apply_cut(
+    ar: NDArray[np.float64], pdf: NDArray[np.float64], cut: list[float]
+) -> NDArray[np.float64]:
+    """Zero g(r) in the regions defined by `cut` (see `backFT`)."""
+    out = pdf.copy()
+    cut = [float(c) for c in cut]
+    if len(cut) == 1 and cut[0] == -1:
+        negative = np.nonzero(pdf < 0)[0]
+        if negative.size:
+            out[: negative[-1] + 1] = 0.0
+        return out
+    if len(cut) % 2 == 0:
+        raise ValueError(
+            "backFT: `cut` must be [-1] or [r0, a1, b1, a2, b2, ...] (odd length)."
+        )
+    mask = ar < cut[0]
+    for lo, hi in zip(cut[1::2], cut[2::2]):
+        mask |= (lo < ar) & (ar < hi)
+    out[mask] = 0.0
+    return out

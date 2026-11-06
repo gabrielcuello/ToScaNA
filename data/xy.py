@@ -94,8 +94,16 @@ class DataXYE:
         self.emin = float(min(self.e))
         self.emax = float(max(self.e))
 
-        self.peaks_x, self.peaks_y = find_peaks_in_range(self.x, self.y, 5.0, 40.0)
-        self.xminr, self.yminr = find_minimum_within_range(self.x, self.y, 5.0, 40.0)
+        # Peak search in 5..40 (2θ for Ni calibration). Bug fix vs legacy:
+        # files with no point in that range (e.g. Q- or r-space files)
+        # crashed with "argmin of an empty sequence".
+        if np.any((self.x >= 5.0) & (self.x <= 40.0)):
+            self.peaks_x, self.peaks_y = find_peaks_in_range(self.x, self.y, 5.0, 40.0)
+            self.xminr, self.yminr = find_minimum_within_range(self.x, self.y, 5.0, 40.0)
+        else:
+            self.peaks_x = np.empty(0, dtype=np.float64)
+            self.peaks_y = np.empty(0, dtype=np.float64)
+            self.xminr, self.yminr = np.float64(np.nan), np.float64(np.nan)
 
     def plot(
         self,
@@ -128,12 +136,14 @@ class DataXYE:
         plt.axis([xmin, xmax, ymin, ymax])  # type: ignore[arg-type]
         plt.grid(True)
         plt.tight_layout()
-        plt.show()
 
+        # Bug fix vs legacy: save BEFORE show(); after an interactive show()
+        # the figure is closed and an empty one was saved.
         if file_format in ["png", "pdf", "jpg", "tiff", "svg", "jpeg", "ps", "eps"]:
             file_fig = "../regdata/" + self.basename + "." + str(file_format)
             plt.savefig(file_fig, format=str(file_format))
             print(f"Figure saved on {file_fig}")
+        plt.show()
 
     def show(self) -> None:
         a_ext = ["adat", "Adat", "reg"]

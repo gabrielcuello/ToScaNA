@@ -18,8 +18,9 @@ def Lorch(q: float, qmax: float = 23.5) -> float:  # noqa: N802 (legacy API)
     This is the scalar version used by legacy `sineFT`.
     """
     if qmax <= 0:
-        print("ERROR: Non positive value for qmax in Lorch function.")
-        return -999
+        # Bug fix vs legacy: legacy printed an error and returned -999, which
+        # was then used silently as a window value.
+        raise ValueError("Non positive value for qmax in Lorch function.")
 
     if (q < 0.0) or (q >= qmax):
         return 0.0
