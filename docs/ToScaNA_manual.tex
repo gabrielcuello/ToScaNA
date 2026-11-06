@@ -317,6 +317,9 @@ For each numor (\code{getOneNumor}):
 All numors are then combined (\code{getDiffA}): each cell is a rectangle of
 one cell width ($8^\circ/64 = 0.125^\circ$), split between the bins of the
 angular grid it overlaps, and weighted by the monitor share of its numor.
+(The split is exact when the angular step equals the cell width, the
+default; keep \code{<asc>} at $0.125^\circ$ until the open item on larger
+steps is resolved.)
 Each bin receives the weighted mean of its contributions; its error is the
 error of a weighted mean, $\sqrt{\sum w^2\sigma^2}/\sum w$. This is done for
 the sum of the banks and for each bank separately. Finally the regrouped
@@ -410,7 +413,8 @@ parameter files of the other measurements.
 \code{DataXYE}, which finds the peaks between $5^\circ$ and $40^\circ$; it
 assumes the first peak is (111) and estimates
 $\lambda = 2(a/\sqrt3)\sin\theta_{111}$; it divides the intensities (and
-errors) by the value in the valley between the second and third peaks; it
+errors) by the first data point above the midpoint between the second and
+third peaks (truncated to whole degrees); it
 builds the 35 starting parameters (background, $\lambda$, $2\theta_0$, ten
 areas proportional to typical Ni intensities, ten asymmetries 0, ten widths)
 and plots the starting model. The order of \code{initial} is:

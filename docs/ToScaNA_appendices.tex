@@ -774,11 +774,52 @@ Silent prints on bad input & \code{ValueError} (unknown isotope, invalid \code{c
     line (the defect corrected in \code{readParam}, C25): \code{<Cmater> V}
     gives \code{"V\textbackslash n"} and a false ``not available'' warning.
     Work-around: end every line with a comment.
-  \item \code{saveCORRECT} needs attributes (\code{sampleTitle},
+  \item \sloppy \code{saveCORRECT} needs attributes (\code{sampleTitle},
     \code{sampleOuterRadius}, \code{sampleTemperature}, \code{sampleDensity},
     \code{samplePackingFraction}, \code{sampleFullness}, \code{containerFile},
     \code{environmentFile}, \code{vanadium}, \code{vanadiumFile}) that
     \code{Measurement} does not provide.
+\end{itemize}
+
+\paragraph{Found while writing the docstrings (not yet changed).}
+\begin{itemize}
+  \item \code{getDiffA}: for an angular step larger than the cell width, the
+    split fractions of a cell straddling a bin edge are computed in bin
+    units (0.25/0.75 instead of 0.5/0.5 for a $0.25^\circ$ step); exact at
+    the default step $0.125^\circ$.
+  \item \code{get_bins}/\code{rebin}: different treatment of the two ends of
+    the grid (see Appendix~\ref{app:reference}); \code{rebin} still prints a
+    debug line; $Q\lambda/4\pi>1$ or a \code{NaN} abscissa raises a
+    \code{ValueError} from \code{int(nan)}.
+  \item \code{readParam}: \code{writeNumor} forced to 1 by a single-numor run
+    stays 1 for the following \code{<run>} lines of the same file; unknown
+    tags and extra values on \code{<num>}/\code{<add>} lines are ignored
+    without a message.
+  \item \code{getEff}/\code{getDec}: bank or cell numbers $\le 0$ are written
+    to elements counted from the end of the array.
+  \item \code{setSampleInfo} treats the sample as a solid cylinder (no inner
+    diameter); the annulus correction C14 exists only in \code{Measurement}.
+  \item Two meanings of ``A'': \code{setSampleInfo()["A"]} averages the
+    integer nucleon numbers, \code{setVanaInfo()["A"]} is the mass ratio
+    $M/m_n$; \code{isotopes.core.getFree} uses the integer value.
+  \item \code{Measurement}: an element given in two \code{<SatoNN>} lines is
+    counted twice in \code{natoms} but once in \code{atoms}, so the
+    concentrations do not sum to 1.
+  \item \code{Element}: overriding \code{bcoh}/\code{binc} does not update
+    \code{re_bcoh} etc.; misspelt override keys are ignored silently;
+    \code{sinc_bound} is 0 when the table has no incoherent length (e.g.\
+    natural V, although $\sigma_\mathrm{inc}=5.08$\,b).
+  \item \code{DataXYE.plot} saves to \code{../regdata/} followed by the full
+    path of the file without extension, which fails for files in
+    sub-directories.
+  \item Ni calibration: \code{setting_model_d4nifit} fails (\code{IndexError},
+    \code{UnboundLocalError}) if fewer than three peaks are found or no point
+    lies above the valley; the fit drops all weights if a single error is
+    not positive; the fit-statistics box is cut from lmfit's report at
+    fixed character positions; \code{reflections_fcc} gives fewer than ten
+    reflections for $\lambda\ge1.355$\,\AA{} (not reachable on D4).
+  \item \code{stop()} raises in Jupyter, where standard input is not a
+    terminal.
 \end{itemize}
 
 \paragraph{Engineering.} A \code{pyproject.toml} so that the package
@@ -1231,7 +1272,10 @@ Regroups all cells of all numors onto the regular angular grid
 the requested step is smaller than a cell
 (\code{angular_range_bank}/\code{ncell}), the cell width is used. Each cell,
 of the cell width and centred at its angle, is split between the (at
-most two) bins it overlaps with fractions $f$; its weight is $w = f\times
+most two) bins it overlaps with fractions $f$ (exact only when the step
+equals the cell width, the default; for a larger step the fractions are
+computed in units of the bin, not of the cell: with $0.25^\circ$ a cell
+overlapping two bins equally is split 0.25/0.75; open item); its weight is $w = f\times
 M_i/\sum M$ (monitor share of its numor). For each bin
 $y = \sum w y_i/\sum w$ and $\sigma = \sqrt{\sum w^2\sigma_i^2}/\sum w$.
 Cells with \code{NaN} counts or errors, and parts of cells outside the grid,
@@ -1375,8 +1419,10 @@ factor; \code{selfsca} the value subtracted from $S$ (1 for a normalised
 $S(Q)$); \code{window} 0 (none) or 1 (standard Lorch). Returns an
 $(N_r, 6)$ array $r, G, g$, RDF, $T, N$, or with \code{with_errors=True}
 an $(N_r, 11)$ array with each error beside its function
-(Section~\ref{sec:errors}). The $Q$ integral uses all points with
-$Q<$\code{qmax}; the running integral starts at \code{nr[0]}.
+(Section~\ref{sec:errors}). The $Q$ integral runs over the whole $Q$ grid
+with $M(Q)=0$ for $Q\ge$\code{qmax}, so the zeroed points still take part
+in the Simpson panels next to $Q_\mathrm{max}$ (\code{getSineFT} instead
+cuts the grid at \code{vmax}); the running integral starts at \code{nr[0]}.
 
 \fnx{getSineFT(\allowbreak{}vvec,\allowbreak\ yvec,\allowbreak\ uvec,\allowbreak\ vmax=0,\allowbreak\ c=1.0,\allowbreak\ s=1.0,\allowbreak\ w=0)} \fixed{P4}
 Generic transform
@@ -1417,8 +1463,13 @@ $\pm\delta/2$; returns \code{(nb, x_lim, x_bin)}.
 
 \fnx{get\_bins(\allowbreak{}x,\allowbreak\ xdel,\allowbreak\ x\_lim)}
 Bins covered by a rectangle of width \code{xdel} centred at \code{x}, and
-the fraction of the rectangle in each. Rectangles that start below the
-first edge or end beyond the last are rejected (empty lists).
+the fraction of the rectangle in each. A rectangle that starts below the
+first edge is rejected entirely (empty lists). At the upper end the
+treatment differs: a rectangle is rejected only if it ends one full bin
+beyond the last edge; otherwise its excess goes to an overflow index that
+\code{rebin} discards, so a point lying entirely in the bin-width beyond
+the last edge is dropped silently and a straddling point contributes only
+its overlap.
 
 \fnx{rebin(\allowbreak{}xdel,\allowbreak\ wlength,\allowbreak\ data,\allowbreak\ xmin,\allowbreak\ xmax,\allowbreak\ dbin)} \fixed{C29}
 Rebins a 3-column array onto the grid of \code{get_xlim}. Each point is a
@@ -1470,8 +1521,10 @@ Area-normalised Gaussian $\frac{A}{\sigma\sqrt{2\pi}}e^{-(x-x_0)^2/2\sigma^2}+b$
 Value and propagated error of \code{Gaussian}.
 
 \fnx{GaussianA(\allowbreak{}x,\allowbreak\ A,\allowbreak\ x0,\allowbreak\ sigma,\allowbreak\ asym=0)}
-Gaussian of area $A$ multiplied by $e^{-\mathrm{asym}(x-x_0)}$ (asymmetric
-peak, used for the Ni reflections).
+Area-normalised Gaussian (area $A$, no background) multiplied by
+$e^{-\mathrm{asym}(x-x_0)}$ (asymmetric peak, used for the Ni reflections).
+For $\mathrm{asym}\neq0$ the area becomes $A\,e^{\mathrm{asym}^2\sigma^2/2}$
+and the maximum moves to $x_0-\mathrm{asym}\,\sigma^2$.
 
 \fnx{LorGau(\allowbreak{}x,\allowbreak\ f0=1.0,\allowbreak\ eta=0.5,\allowbreak\ sigma=2.0,\allowbreak\ gamma=2.0,\allowbreak\ bckg=0.0)}
 Mixture centred at 0: $f_0[\eta e^{-x^2/2\sigma^2} + (1-\eta)L(x)] + b$,
@@ -1551,7 +1604,9 @@ Inverse of the above.
 $A = M/m_n$, $m_n = 1.0086649$\,u.
 
 \fnx{getFreeXS(\allowbreak{}BoundXS=5.08,\allowbreak\ A=50.9415)}
-$\sigma_\mathrm{bound}[A/(A+1)]^2$ for one nucleus.
+$\sigma_\mathrm{bound}[A/(A+1)]^2$ for one nucleus, $A=m/m_n$. Note: the
+default \code{A=50.9415} is the molar mass of vanadium, not its mass ratio
+50.50 (0.03\,\% effect on the factor).
 
 \fnx{getAbsXS(\allowbreak{}AbsXS=5.08,\allowbreak\ wavelength=THERMAL\_WAVELENGTH)} \fixed{C30}
 $\sigma_\mathrm{abs}\lambda/1.798$.
@@ -1596,7 +1651,8 @@ angle and lattice parameter. $x$ is $2\theta$ in degrees.
 Prepares the Ni calibration. Reads the regrouped Ni diffractogram
 (\code{DataXYE}), estimates $\lambda$ from the first peak, assumed to be
 (111): $\lambda = 2(a/\sqrt3)\sin\theta_{111}$; normalises intensities and
-errors to the value midway between the second and third peaks; builds the
+errors to the first data point above the midpoint between the second and
+third peaks, truncated to whole degrees; builds the
 35 initial parameters (background, $\lambda$, $2\theta_0$, ten areas
 proportional to typical Ni intensities, asymmetries 0, widths 0.2--0.4);
 plots data, initial model and residuals. Returns
@@ -1638,8 +1694,10 @@ $=\sigma_\mathrm{sca}/4\pi$, \code{b2highQ} $=\sigma_\mathrm{free}/4\pi$;
 \code{EffAtomicDensity}; data arrays \code{Data}, \code{envData},
 \code{conData}, \code{norData}, \code{absData}. A warning is printed if
 the container inner diameter differs from the sample outer diameter.
-\code{showTable(outfile=None)} prints the main parameters, to a file if
-given.
+\code{showTable(outfile=None)} prints the identification, beam and grid
+parameters (not the sample, container or composition), to a file if given.
+\code{<Nmater>} is not read (the normaliser is always vanadium) and
+\code{Fullness} is stored but not used.
 
 \tssub{\texttt{experiment.info}}
 
@@ -1652,6 +1710,8 @@ Constants \code{VANADIUM_DENSITY_GCC = 6.11}, \code{VANADIUM_MOLAR_MASS = 50.941
 \fnx{setBinInfo(\allowbreak{}AngularResolution=0.125,\allowbreak\ AMin=0.0,\allowbreak\ AMax=140.0,\allowbreak\ AStep=0.125,\allowbreak\ QMin=0.0,\allowbreak\ QMax=23.5,\allowbreak\ QStep=0.02,\allowbreak\ RMin=0.0,\allowbreak\ RMax=20.0,\allowbreak\ RStep=0.01)}
 \fnx{setNumorInfo(\allowbreak{}totalNumors,\allowbreak\ containerNumors,\allowbreak\ environmentNumors,\allowbreak\ nickelNumors,\allowbreak\ vanadiumNumors,\allowbreak\ absorberNumors,\allowbreak\ sampleNumors)}
 Each builds and prints a dictionary describing one part of the
+experiment; every argument has a default (e.g.\ \code{LC="Cuello"},
+numor ranges \code{("Exp", 0, 1)}), see the docstrings. The dictionaries describe one part of the
 experiment (beam width = left $-$ right slit, height = top $-$ bottom
 flag; can wall thickness; number of points of each grid; numor ranges
 given as (label, first, last)). \legacy
