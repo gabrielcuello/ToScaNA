@@ -1840,9 +1840,9 @@ ISOTOPE_DICT: Dict[str, tuple[Any, ...]] = {
         "NULL",
         "NULL",
         "NULL",
-        0.01838,
+        0.02466,  # sig_coh = 4π(0.443 fm)²/100; was 0.01838 (b = -0.3824 fm)
         5.08,
-        5.09838,
+        5.10466,  # sig_sca = sig_coh + sig_inc; was 5.09838
         5.08,
         0,
     ),

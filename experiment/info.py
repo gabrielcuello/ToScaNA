@@ -7,6 +7,7 @@ import numpy as np
 from toscana.physics.geometry import getCylVolume
 from toscana.physics.properties import (
     AtomicAvg,
+    getAbsXS,
     getAtomicDensity,
     getFreeXS,
     getMassNumber,
@@ -290,10 +291,10 @@ def setNumorInfo(
 
 def setVanaInfo(
     IncXS: float = 5.08,
-    CohXS: float = 0.0184,
-    ScaXS: float = 5.0984,
+    CohXS: float = 0.02466,  # 4π(0.443 fm)²/100 (legacy 0.0184 for -0.3824 fm)
+    ScaXS: float = 5.10466,  # CohXS + IncXS (legacy 5.0984)
     AbsXS: float = 5.08,
-    CohSL: float = -0.3824,
+    CohSL: float = -0.443,  # legacy -0.3824; matches isotopes database "V"
     molarM: float = 50.9415,
     NAtoms: float = 1.0,
     Diam: float = 6.08,
@@ -399,7 +400,7 @@ def setSampleInfo(
     IncXS = AtomicAvg(c_sample, extractAttr(elements, "sig_inc"))
     ScaXS = AtomicAvg(c_sample, extractAttr(elements, "sig_sca"))
     AbsXS = AtomicAvg(c_sample, extractAttr(elements, "sig_abs"))
-    AbsWW = AbsXS * wavelength / 1.8
+    AbsWW = getAbsXS(AbsXS, wavelength)  # was AbsXS * wavelength / 1.8
     CohSL = AtomicAvg(c_sample, extractAttr(elements, "re_bcoh"))
     A = AtomicAvg(c_sample, extractAttr(elements, "A"))
 

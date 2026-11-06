@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from typing import Mapping
 
+# Thermal reference for tabulated cross sections: neutrons at 2200 m/s.
+# λ = h / (m_n v) = 1.798 Å, E = 81.8042 meV·Å² / λ² = 25.30 meV.
+THERMAL_WAVELENGTH = 1.798  # Å
+THERMAL_ENERGY_MEV = 81.8042 / THERMAL_WAVELENGTH**2  # meV
+
 
 def getAtomicDensity(density: float = 1.0, molarMass: float = 6.0) -> float:
     """
@@ -85,14 +90,16 @@ def getFreeXS(BoundXS: float = 5.08, A: float = 50.9415) -> float:
     return float(BoundXS * A**2 / (1.0 + A) ** 2)
 
 
-def getAbsXS(AbsXS: float = 5.08, wavelength: float = 1.8089) -> float:
+def getAbsXS(AbsXS: float = 5.08, wavelength: float = THERMAL_WAVELENGTH) -> float:
     """
-    Scale absorption cross section (barns) by wavelength (Å).
+    Scale absorption cross section (barns) by wavelength (Å), 1/v law:
 
-    Legacy formula:
-        sigma_abs(lambda) = sigma_thermal * lambda / 1.8089
+        sigma_abs(lambda) = sigma_thermal * lambda / 1.798
+
+    Tabulated absorption cross sections refer to 2200 m/s neutrons
+    (λ = 1.798 Å). Legacy divided by 1.8089 Å (-0.6% bias).
     """
-    return float(AbsXS * wavelength / 1.8089)
+    return float(AbsXS * wavelength / THERMAL_WAVELENGTH)
 
 
 def getNofAtoms(atoms: Mapping[str, float]) -> float:

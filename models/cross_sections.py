@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from toscana.physics.properties import THERMAL_ENERGY_MEV
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
@@ -44,6 +46,9 @@ def scattering_probability(  # noqa: N802 (legacy API)
     composition_arr = np.array(composition_vec, dtype=np.float64)
     abs_xs_arr = np.array(abs_xs_vec, dtype=np.float64)
 
-    abs_xs = float(np.dot(composition_arr, abs_xs_arr)) / np.sqrt(float(E0) / 25.3)
+    # 1/v law relative to the 2200 m/s reference (E0 in meV)
+    abs_xs = float(np.dot(composition_arr, abs_xs_arr)) / np.sqrt(
+        float(E0) / THERMAL_ENERGY_MEV
+    )
     total_xs = abs_xs + float(scat_xs)
     return float(1.0 - abs_xs / total_xs)

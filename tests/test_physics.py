@@ -56,10 +56,26 @@ class TestProperties(unittest.TestCase):
     def test_free_cross_section(self) -> None:
         self.assertAlmostEqual(getFreeXS(5.08, 50.0), 5.08 * (50 / 51) ** 2, places=12)
 
-    @unittest.expectedFailure
-    def test_absorption_reference_wavelength_pending_C30(self) -> None:
-        """C30 (pending decision): σ_abs is tabulated at 2200 m/s, λ = 1.798 Å."""
-        self.assertAlmostEqual(getAbsXS(5.08, 1.798), 5.08, places=3)
+    def test_absorption_reference_wavelength(self) -> None:
+        """σ_abs is tabulated at 2200 m/s, λ = 1.798 Å (C30)."""
+        self.assertEqual(getAbsXS(5.08, 1.798), 5.08)
+        self.assertAlmostEqual(getAbsXS(5.08, 0.5), 5.08 * 0.5 / 1.798, places=12)
+
+    def test_thermal_references_consistent(self) -> None:
+        from toscana.models.cross_sections import scattering_probability
+        from toscana.physics.properties import THERMAL_ENERGY_MEV, THERMAL_WAVELENGTH
+
+        self.assertEqual(THERMAL_WAVELENGTH, 1.798)
+        # E[meV] = 81.8042 / λ[Å]^2, and v = 2200 m/s
+        self.assertAlmostEqual(THERMAL_ENERGY_MEV, 25.30, places=2)
+        v = 3956.034 / THERMAL_WAVELENGTH  # h/m_n in m·Å/s
+        self.assertAlmostEqual(v, 2200.0, delta=1.0)
+        # energy route and wavelength route give the same absorption
+        lam = 0.5
+        e0 = 81.8042 / lam**2
+        p = scattering_probability(e0, 5.0, [1.0], [5.08])
+        sabs = getAbsXS(5.08, lam)
+        self.assertAlmostEqual(p, 1 - sabs / (sabs + 5.0), places=12)
 
 
 class TestVanadiumStandard(unittest.TestCase):

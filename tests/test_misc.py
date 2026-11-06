@@ -30,11 +30,23 @@ class TestIsotopes(unittest.TestCase):
         with self.assertRaises(ValueError):
             Elemento("Xx99")
 
-    @unittest.expectedFailure
-    def test_vanadium_b_consistent_with_sigma_pending_C16(self) -> None:
-        """C16 (pending decision): b_coh and σ_coh of V should agree."""
+    def test_vanadium_b_consistent_with_sigma(self) -> None:
+        """C16: V uses b_coh = -0.443 fm; σ_coh and σ_sca follow from it."""
         v = Elemento("V")
-        self.assertAlmostEqual(4 * np.pi * v.re_bcoh**2 / 100 / v.sig_coh, 1.0, delta=0.02)
+        self.assertEqual(v.re_bcoh, -0.443)
+        self.assertAlmostEqual(4 * np.pi * v.re_bcoh**2 / 100 / v.sig_coh, 1.0, delta=1e-3)
+        self.assertAlmostEqual(v.sig_sca, v.sig_coh + v.sig_inc, places=10)
+
+    def test_vanadium_standard_defaults_match_database(self) -> None:
+        from toscana.experiment.info import setVanaInfo
+
+        vana = quiet(setVanaInfo)
+        v = Elemento("V")
+        self.assertEqual(vana["CohSL"], v.re_bcoh)
+        self.assertEqual(vana["CohXS"], v.sig_coh)
+        self.assertEqual(vana["ScaXS"], v.sig_sca)
+        self.assertEqual(vana["IncXS"], v.sig_inc)
+        self.assertEqual(vana["AbsXS"], v.sig_abs)
 
 
 class TestDataXYE(unittest.TestCase):
