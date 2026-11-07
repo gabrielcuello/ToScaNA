@@ -144,6 +144,10 @@ Commit & Content \\
 \tn{0e2a14f} & Subpackages renamed \code{math}$\to$\code{numerics}, \code{io}$\to$\code{dataio}. \\
 \tn{255c508} & Physical choices: annulus volume, free cross sections, sigmoid, $Q_0$, weighted Ni fit. \\
 \tn{369e286} & Error bars for $G$, $g$, RDF, $T$ and $N$. \\
+\tn{bb15b1f} & Appendices (this document). \\
+\tn{2b48c8a} & User manual. \\
+\tn{5cbaee8} & Docstrings for every module, class and function (documentation only). \\
+\tn{ece015d} & Splitting of cells in \code{getDiffA}; parser of the sample-description file. \\
 \bottomrule
 \end{longtable}
 
@@ -337,6 +341,28 @@ are now stripped. Affected: \code{getEff}, \code{getDec}, \code{read_xye}.
 \code{binary_sum} combined $\sqrt{w_1^2 e_1 + w_2^2 e_2}$ instead of
 $\sqrt{w_1^2 e_1^2 + w_2^2 e_2^2}$ (dimensionally wrong; $e_1=e_2=2$ gave
 2.0 instead of 2.83).
+
+\paragraph{\fixed{} Splitting of cells for steps larger than a cell.} \newbeh{}
+Found while writing the docstrings and corrected in commit \code{ece015d}.
+\code{getDiffA} split a cell straddling a bin edge with fractions computed in
+units of the \emph{bin}. They are right only when the angular step equals
+the cell width ($0.125^\circ$, the default); with a $0.25^\circ$ step, a cell
+overlapping two bins equally was split 0.25/0.75. Each cell is now split by
+overlap$/$cell width. At the default step the results are unchanged
+(checked on 20 numors: differences $\le 1.3\times10^{-12}$, same empty
+bins); rounding residues below $10^{-12}$ at a bin edge are ignored so that
+they cannot fill an empty bin.
+
+\paragraph{\fixed{} Parser of the sample-description file.} Corrected in
+commit \code{ece015d}. \code{getRunningParams} had the defect C25: lines
+were split at single spaces, so a value ending its line kept the newline
+(\code{<Cmater> V} gave a false ``not available'' warning; titles and file
+names ended with a newline) and repeated spaces gave empty values;
+\code{<Sdescr>} and \code{<SatoNN>} were read from fixed character
+positions. Lines are now cut at \texttt{\#} and split on any white space. A
+file written with a comment on every line, as the old parser required,
+is read as before, except that the description loses the spaces before
+\texttt{\#}.
 
 % ---------------------------------------------------------------------
 \tssec{Fourier transform and real-space functions}\label{sec:fourier}
@@ -729,6 +755,8 @@ $\sigma_\mathrm{abs}(\lambda)$ & $\propto\lambda/1.798$ \\
 Free cross sections & per element (large change for H, D) \\
 \tn{sigmoidal} & a true logistic step \\
 Ni calibration & weighted fit, lattice 3.52\,\AA{} by default, \code{lattice=} argument \\
+Regrouping with a step $>0.125^\circ$ & cells split by their overlap (results change; default step unchanged) \\
+Sample-description file & comments optional, any spacing \\
 Silent prints on bad input & \code{ValueError} (unknown isotope, invalid \code{cut}, $Q_\mathrm{max}\le0$, invalid window or weights, negative dead-time factor) \\
 \bottomrule
 \end{longtable}
@@ -769,11 +797,6 @@ Silent prints on bad input & \code{ValueError} (unknown isotope, invalid \code{c
     directory.
   \item \code{saveCORRECT} writes the keyword \code{wavelenght}; to be
     checked against what CORRECT accepts.
-  \item \code{getRunningParams} (sample-description file) still splits lines
-    on single spaces and keeps the newline on a text value that ends its
-    line (the defect corrected in \code{readParam}, C25): \code{<Cmater> V}
-    gives \code{"V\textbackslash n"} and a false ``not available'' warning.
-    Work-around: end every line with a comment.
   \item \sloppy \code{saveCORRECT} needs attributes (\code{sampleTitle},
     \code{sampleOuterRadius}, \code{sampleTemperature}, \code{sampleDensity},
     \code{samplePackingFraction}, \code{sampleFullness}, \code{containerFile},
@@ -783,10 +806,6 @@ Silent prints on bad input & \code{ValueError} (unknown isotope, invalid \code{c
 
 \paragraph{Found while writing the docstrings (not yet changed).}
 \begin{itemize}
-  \item \code{getDiffA}: for an angular step larger than the cell width, the
-    split fractions of a cell straddling a bin edge are computed in bin
-    units (0.25/0.75 instead of 0.5/0.5 for a $0.25^\circ$ step); exact at
-    the default step $0.125^\circ$.
   \item \code{get_bins}/\code{rebin}: different treatment of the two ends of
     the grid (see Appendix~\ref{app:reference}); \code{rebin} still prints a
     debug line; $Q\lambda/4\pi>1$ or a \code{NaN} abscissa raises a
@@ -966,6 +985,15 @@ prefix, grouped by test class.
 \tn{errors\_\allowbreak{}are\_\allowbreak{}combined\_\allowbreak{}not\_\allowbreak{}averaged} & Combined errors never exceed the input error and their median is clearly smaller (C29). \\
 \tn{non\_\allowbreak{}commensurate\_\allowbreak{}step} & Step $0.3^\circ$ on $[1,140)$ works; the grid has the length of \code{np.arange} (C6). \\
 \tn{out\_\allowbreak{}of\_\allowbreak{}range\_\allowbreak{}cells\_\allowbreak{}are\_\allowbreak{}dropped} & Cells at $-5^\circ$ and $200^\circ$ do not appear anywhere (C7). \\
+\multicolumn{2}{@{}l}{\textit{TestGetDiffASplit}} \\
+\tn{cell\_\allowbreak{}straddling\_\allowbreak{}an\_\allowbreak{}edge\_\allowbreak{}with\_\allowbreak{}larger\_\allowbreak{}step} & A cell centred on a bin edge, step $0.25^\circ$: weights 0.5/0.5 (were 0.25/0.75). \\
+\tn{cell\_\allowbreak{}inside\_\allowbreak{}one\_\allowbreak{}bin} & A cell inside one bin gives weight 1 there; the next bin stays empty. \\
+\tn{weights\_\allowbreak{}equal\_\allowbreak{}overlaps\_\allowbreak{}for\_\allowbreak{}several\_\allowbreak{}steps} & For steps 0.125, 0.2, 0.25, 0.3, $0.5^\circ$ the bin weights equal overlaps computed independently, and their sum equals the number of cells. \\
+\tn{edge\_\allowbreak{}on\_\allowbreak{}bin\_\allowbreak{}edge\_\allowbreak{}leaves\_\allowbreak{}next\_\allowbreak{}bin\_\allowbreak{}empty} & A cell exactly filling one bin leaves both neighbours empty (rounding residues ignored). \\
+\multicolumn{2}{@{}l}{\textit{TestRunningParams}} \\
+\tn{values\_\allowbreak{}at\_\allowbreak{}end\_\allowbreak{}of\_\allowbreak{}line\_\allowbreak{}and\_\allowbreak{}extra\_\allowbreak{}spaces} & A sample file without comments, with several spaces and a tab: exact values (no newline), complete description and atoms, no warning printed. \\
+\tn{unknown\_\allowbreak{}material\_\allowbreak{}still\_\allowbreak{}warns} & A material not in the list still gives the warning. \\
+\tn{bad\_\allowbreak{}first\_\allowbreak{}character\_\allowbreak{}raises} & A line not starting with \texttt{\#}, \texttt{!} or \texttt{<} raises. \\
 \multicolumn{2}{@{}l}{\textit{TestRebin}} \\
 \tn{bin\_\allowbreak{}count} & $[0,0.3]$ step 0.1 gives 4 bins; $[0,0.25]$ gives 3 (C19). \\
 \tn{error\_\allowbreak{}of\_\allowbreak{}mean} & Ten points of $100\pm10$ per bin give $100\pm10/\sqrt{10}$ (C29). \\
@@ -1272,10 +1300,9 @@ Regroups all cells of all numors onto the regular angular grid
 the requested step is smaller than a cell
 (\code{angular_range_bank}/\code{ncell}), the cell width is used. Each cell,
 of the cell width and centred at its angle, is split between the (at
-most two) bins it overlaps with fractions $f$ (exact only when the step
-equals the cell width, the default; for a larger step the fractions are
-computed in units of the bin, not of the cell: with $0.25^\circ$ a cell
-overlapping two bins equally is split 0.25/0.75; open item); its weight is $w = f\times
+most two) bins it overlaps with fractions $f$ = overlap/cell width (fixed
+in \code{ece015d}; before, the fractions were in bin units and wrong for
+steps larger than the cell width); its weight is $w = f\times
 M_i/\sum M$ (monitor share of its numor). For each bin
 $y = \sum w y_i/\sum w$ and $\sigma = \sqrt{\sum w^2\sigma_i^2}/\sum w$.
 Cells with \code{NaN} counts or errors, and parts of cells outside the grid,
@@ -1349,7 +1376,7 @@ shapes: type, inner diameter, outer diameter, height), sample
 each \code{<SatoNN>} is \code{symbol number}, counted into \code{<SNelem>}),
 and data files (\code{<CoFile> <AbFile> <NoFile> <EnFile> <SaFile>}). Unknown
 materials or shapes print a warning. Its output is the input of
-\code{experiment.Measurement}. \legacy
+\code{experiment.Measurement}. Lines are cut at \texttt{\#} and split on any white space (fixed in \code{ece015d}, same defect as C25).
 
 \tssub{\texttt{dataio.loading}, \texttt{saving}, \texttt{numors}, \texttt{correct}, \texttt{\_logfiles}}
 

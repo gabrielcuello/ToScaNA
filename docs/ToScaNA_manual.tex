@@ -171,7 +171,7 @@ and takes about 35 seconds:
 \begin{lstlisting}
 python /Users/cuello/AI-lab/ToScaNA-pilot/tests/run_tests.py
 ...
-Ran 88 tests in 35.0s
+Ran 95 tests in 35.0s
 OK
 \end{lstlisting}
 
@@ -316,10 +316,8 @@ For each numor (\code{getOneNumor}):
 \end{enumerate}
 All numors are then combined (\code{getDiffA}): each cell is a rectangle of
 one cell width ($8^\circ/64 = 0.125^\circ$), split between the bins of the
-angular grid it overlaps, and weighted by the monitor share of its numor.
-(The split is exact when the angular step equals the cell width, the
-default; keep \code{<asc>} at $0.125^\circ$ until the open item on larger
-steps is resolved.)
+angular grid it overlaps in proportion to the overlap, and weighted by
+the monitor share of its numor.
 Each bin receives the weighted mean of its contributions; its error is the
 error of a weighted mean, $\sqrt{\sum w^2\sigma^2}/\sum w$. This is done for
 the sum of the banks and for each bank separately. Finally the regrouped
@@ -486,13 +484,11 @@ checked to work:
 <SaFile> SiO2_RT.qdat # sample data
 \end{lstlisting}
 
-\warn{In this file, separate values by \emph{exactly one} space, and end
-every tag line with a comment (\code{\# ...}). The parser splits on single
-spaces, and a text value that is the last word of its line keeps the
-newline character: \code{<Cmater> V} without a comment gives the material
-\code{"V\textbackslash n"} and the warning ``The container V is not
-available''. (The d4creg parameter file of Chapter~\ref{ch:d4creg} does not
-have this limitation since its parser was corrected, \st{C25}.)}
+\noindent The syntax is the same as for the d4creg file: values are
+separated by spaces (any number), and anything after \code{\#} is a
+comment, which is optional. (Before commit \code{ece015d} a value at the
+end of a line kept the newline character, so every line needed a comment;
+files written that way are read exactly as before.)
 
 \noindent Shapes are given as \code{type inner\_diameter outer\_diameter height}
 in mm; only \code{cylinder} is known. Elements are given as
@@ -774,7 +770,7 @@ negative value.
 
 \section{Tests}
 
-\code{python tests/run_tests.py} runs the 88 tests in about 35 seconds and
+\code{python tests/run_tests.py} runs the 95 tests in about 35 seconds and
 ends with \code{OK} when everything works. Run it after any change to the
 code. Appendix~\ref{app:tests} explains what each test checks and how to add
 one.
@@ -816,7 +812,7 @@ Symptom & Cause and remedy \\
 \code{ValueError: ... needs a third column} & \code{with_errors=True} requires $S(Q)$ errors. \\
 $g(r)$ clearly non-zero at low $r$ & Wrong $\rho$, wrong normalisation or self-scattering level of $S(Q)$, or $Q_\mathrm{max}$ too small. \\
 \code{ValueError: The isotope 'X' does not exist} & Check the symbol; isotopes as \code{"Li6"}, deuterium \code{"H2"}. \\
-``The container V is not available'' & In the sample-description file, end the line with a comment (Chapter~\ref{ch:sample}). \\
+``The container V is not available'' & Only with versions before \code{ece015d}: end the line with a comment, or update. With the current version the material is really not in the accepted list. \\
 Empty figure saved & Old versions saved after \code{show()}; fixed (\st{C22}). \\
 Results differ from older analyses & See the table of changes in Section~\ref{sec:migration}. \\
 \bottomrule
