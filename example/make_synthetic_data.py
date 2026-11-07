@@ -17,28 +17,31 @@ CORRECT command file ``data/Ni_powder.com`` and the true values
 Physics of the synthetic data (what the correction must invert)
 ---------------------------------------------------------------
 * Set-up: Ni powder (Ø 5 mm, 60 mm, packing fraction ≈ 0.5) in a vanadium
-  can (Ø 5.0/5.2 mm), vanadium rod Ø 6.08 mm, furnace with vanadium shield
-  Ø 40.0/40.2 mm, beam 8 × 50 mm², λ = 0.5 Å.
-* Furnace and instrument as background: I_E = room + furnace (half of the
-  furnace scattering comes from the part of the shield before the sample,
-  half from the part after it). A black absorber in the sample position
-  removes the part after it: I_ACE = room + upstream furnace. With the
-  sample in the beam only a fraction T_C of the beam reaches the part after
-  it, so the background of configuration C is
-  B_C = T_C I_E + (1 - T_C) I_ACE.
-* Attenuation (Paalman & Pings factors A_b,C), transmissions T_C and
-  multiple scattering δ_C from MCAMS (toscana.corrections.factors, default
-  statistics, seed 1), i.e. the same calculation as in the notebook: without
-  noise the correction recovers the input to rounding error; with noise
-  (default) within the error bars.
+  can (Ø 5.0/5.2 mm), inside a furnace with a vanadium shield (Ø 40.0/40.2
+  mm); vanadium rod Ø 6.08 mm in the same furnace; absorber: 10B powder
+  (1.25 g/cm³) in the same can; beam 8 × 50 mm², λ = 0.5 Å.
+* Bodies: s sample, c container, h furnace (environment), v vanadium,
+  a absorber. Configurations measured: h (I_E), ch (I_CE), sch (I_SCE),
+  vh (I_VE), ach (I_ACE). Paalman & Pings factors A_b,C, multiple
+  scattering δ_C(2θ) and P_b = Σρσ_s<L> from MCAMS (toscana.corrections:
+  default statistics, seed 1, the same calculation as in the notebook).
+* Every measurement contains the room background B(2θ) (not attenuated by
+  the set-up), the single scattering of each body b attenuated by A_b,C and
+  the multiple scattering δ_C K Σ_b A_b,C P_b/4π:
+
+      I_E   = B + A_h,h I_h                                   + MS_h
+      I_CE  = B + A_h,ch I_h + A_c,ch I_c                     + MS_ch
+      I_SCE = B + A_h,sch I_h + A_c,sch I_c + A_s,sch I_s     + MS_sch
+      I_VE  = B + A_h,vh I_h + A_v,vh K (1 - P_v) P_v/4π      + MS_vh
+      I_ACE = B + A_h,ach I_h + A_c,ach I_c + A_a,ach K P_a/4π + MS_ach
+
+  K(2θ): count rate per unit isotropic cross section (flux × efficiency);
+  I_s = K n<L>_s (dσ/dΩ - Σσ/4π P_s), P_v, P_s: Placzek corrections (series);
+  I_c = K P_c/4π; I_h = K P_h/4π (1 + 0.1 cos 2θ).
 * Sample: crystalline Ni (fcc, a = 3.52 Å), Gaussian Bragg peaks, Debye-
-  Waller factor; S(Q) = e^{-u²Q²} S_Bragg(Q) + 1 - e^{-u²Q²}. Placzek
-  correction (series) applied to sample and vanadium.
-* Count rate per unit isotropic cross section K(2θ) (flux × efficiency);
-  sample:    M_sc = B_sc + A_s,sc K n<L>_s (dσ/dΩ - Placzek) + A_c,sc I_c + MS_sc
-  container: M_c  = B_c  + A_c,c I_c + MS_c,   I_c = K P_c / 4π
-  vanadium:  M_v  = B_v  + (1 + δ_v) A_v,v K P_v/4π (1 - P_v(Placzek))
-  MS_C = δ_C K Σ_b A_b,C P_b / 4π,  P_b = Σ ρ σ_s <L>.
+  Waller factor; S(Q) = e^{-u²Q²} S_Bragg(Q) + 1 - e^{-u²Q²}.
+* Without noise the correction recovers the input to rounding error; with
+  counting noise (default) within the error bars.
 
 Usage: ``python make_synthetic_data.py [--no-noise]`` (about 3 minutes).
 """
@@ -61,7 +64,7 @@ DATA = HERE / "data"
 LAMBDA = 0.5
 THETA = np.round(np.arange(1.5, 135.0 + 1e-9, 0.125), 6)          # <asc>
 Q_GRID = np.round(np.arange(0.3, 23.0 + 1e-9, 0.02), 6)           # <qsc>
-NAMES = {"sc": "I_SCE", "c": "I_CE"}
+NAMES = {"h": "I_E", "ch": "I_CE", "sch": "I_SCE", "vh": "I_VE", "ach": "I_ACE"}
 
 PAR = f"""# ToScaNA sample-description file: synthetic Ni powder (correction example)
 <ins> D4 # instrument
@@ -84,7 +87,7 @@ PAR = f"""# ToScaNA sample-description file: synthetic Ni powder (correction exa
 <Cshape> cylinder 5.0 5.2 60.0 # container: type id od height (mm)
 <Nmater> V # normaliser
 <Nshape> cylinder 0.0 6.08 60.0 # vanadium rod
-<Amater> B10 # absorber: 10B powder in the container
+<Amater> [10B]@1.25 # absorber: 10B powder (g/cm3) in the container
 <Ashape> cylinder 0.0 5.0 60.0 # absorber
 <Emater> V # environment
 <Eshape> cylinder 40.0 40.2 100.0 # furnace shield
@@ -141,43 +144,44 @@ def write_regrouped(path: pathlib.Path, x, y, e, scale: str) -> None:
             fh.write(f"{a:9.4f}     {b:14.6f}     {c:12.6f} \n")
 
 
-def forward(m, theta, fs, fv, ss, vs):
-    """Noise-free measurements and true values on the angles `theta`."""
+def forward(m, theta, factors, setups):
+    """Noise-free measurements and true values on the angles `theta`.
+
+    factors, setups: dicts with keys "sample", "vanadium", "absorber"."""
     from toscana.isotopes import Element
     from toscana.workflows.correction import _placzek
 
+    four_pi = 4 * math.pi
     q = 4 * math.pi / LAMBDA * np.sin(np.radians(theta) / 2)
     ni = Element("Ni")
     s = s_true(q)
     p_s = _placzek(theta, LAMBDA, ni.weight, float(m.TempK), "series")
-    dcs = ni.sig_sca / (4 * math.pi) + abs(ni.bcoh) ** 2 / 100 * (s - 1)
+    p_v = _placzek(theta, LAMBDA, Element("V").weight, 300.0, "series")
+    dcs = ni.sig_sca / four_pi + abs(ni.bcoh) ** 2 / 100 * (s - 1)
     k = 6.0e5 * (1 - 0.15 * (theta / 135) ** 2) * (1 + 0.02 * np.sin(theta / 9))
     room = 150 + 4000 * np.exp(-theta / 2.5)
-    furnace = 900 * (1 + 0.25 * np.cos(np.radians(theta)))
-    i_e = room + furnace
-    i_ace = room + 0.5 * furnace
-
-    def bkg(fset, cfg):
-        t = fset.T[f"T_{cfg}"]
-        return t * i_e + (1 - t) * i_ace
-
-    single = {"s": k * fs.atoms_per_area["s"] * (dcs - ni.sig_sca / (4 * math.pi) * p_s),
-              "c": k * ss.scattering_power("c") / (4 * math.pi)}
-    meas = {"I_E": i_e, "I_ACE": i_ace}
-    for cfg in fs.configurations:
-        iso = sum(fs.A[f"A_{b},{cfg}"] * ss.scattering_power(b) for b in cfg) / (4 * math.pi)
-        meas[NAMES[cfg]] = (bkg(fs, cfg) + sum(fs.A[f"A_{b},{cfg}"] * single[b] for b in cfg)
-                            + fs.delta[f"delta_{cfg}"] * k * iso)
-    p_v = _placzek(theta, LAMBDA, Element("V").weight, 300.0, "series")
-    i_v = k * vs.scattering_power("v") / (4 * math.pi)            # after Placzek correction
-    meas["I_VE"] = bkg(fv, "v") + (1 + fv.delta["delta_v"]) * fv.A["A_v,v"] * i_v * (1 - p_v)
-    truth = {"S": s, "dcs": dcs, "I_s": single["s"], "I_c": single["c"], "I_v": i_v, "K": k}
+    ss, vs, as_ = setups["sample"], setups["vanadium"], setups["absorber"]
+    single = {"s": k * factors["sample"].atoms_per_area["s"] * (dcs - ni.sig_sca / four_pi * p_s),
+              "c": k * ss.scattering_power("c") / four_pi,
+              "h": k * ss.scattering_power("h") / four_pi * (1 + 0.1 * np.cos(np.radians(theta))),
+              "v": k * vs.scattering_power("v") / four_pi * (1 - p_v),
+              "a": k * as_.scattering_power("a") / four_pi}
+    meas = {}
+    for key, setup in (("sample", ss), ("vanadium", vs), ("absorber", as_)):
+        fset = factors[key]
+        for cfg in fset.configurations:
+            iso = sum(fset.A[f"A_{b},{cfg}"] * setup.scattering_power(b) for b in cfg) / four_pi
+            meas[NAMES[cfg]] = (room + sum(fset.A[f"A_{b},{cfg}"] * single[b] for b in cfg)
+                                + fset.delta[f"delta_{cfg}"] * k * iso)
+    truth = {"S": s, "dcs": dcs, "I_s": single["s"], "I_c": single["c"], "I_h": single["h"],
+             "I_v": k * vs.scattering_power("v") / four_pi, "K": k, "B": room}
     return q, meas, truth
 
 
 def main() -> None:
     from toscana.corrections.factors import compute_factors
-    from toscana.corrections.setup import setups_from_measurement
+    from toscana.corrections.setup import (absorber_setup_from_measurement,
+                                           setups_from_measurement)
     from toscana.dataio.running_params import getRunningParams
     from toscana.experiment.measurement import Measurement
     from toscana.workflows.correction import build_state
@@ -196,14 +200,19 @@ def main() -> None:
     os.chdir(HERE)
     with contextlib.redirect_stdout(io.StringIO()):
         m = Measurement(getRunningParams("Ni_powder.par"))
-    ss, vs = setups_from_measurement(m, environment="background")
+    ss, vs = setups_from_measurement(m, environment="layer", vanadium_in_environment=True)
+    setups = {"sample": ss, "vanadium": vs,
+              "absorber": absorber_setup_from_measurement(m, environment="layer")}
     rng = np.random.default_rng(2026)
     theta_q = 2 * np.degrees(np.arcsin(Q_GRID * LAMBDA / (4 * math.pi)))
     for scale, theta in (("angle", THETA), ("q", theta_q)):
         print(f"MCAMS factors on the {scale} grid ...", flush=True)
-        fs = compute_factors(ss, theta)
-        fv = compute_factors(vs, theta)
-        q, meas, truth = forward(m, theta, fs, fv, ss, vs)
+        # the same configurations as run_correction(environment="layer", ...)
+        factors = {"sample": compute_factors(ss, theta),
+                   "vanadium": compute_factors(vs, theta, configurations=["vh"]),
+                   "absorber": compute_factors(setups["absorber"], theta,
+                                               configurations=["ach"])}
+        q, meas, truth = forward(m, theta, factors, setups)
         x = theta if scale == "angle" else Q_GRID
         ext = "adat" if scale == "angle" else "qdat"
         for name, y in meas.items():
@@ -211,21 +220,24 @@ def main() -> None:
             if not args.no_noise:
                 y = y + rng.standard_normal(len(y)) * e
             write_regrouped(DATA / f"{name}.{ext}", x, y, e, scale)
-        cols = ["S", "dcs", "I_s", "I_c", "I_v", "K"]
+        cols = ["S", "dcs", "I_s", "I_c", "I_h", "I_v", "K", "B"]
         header = ("true values of the synthetic experiment (noise free)\n"
                   f"columns: {'2theta(deg)' if scale == 'angle' else 'Q(1/A)'} "
-                  "S(Q) dsigma/dOmega(barn/sr/atom) I_s I_c I_v K\n"
+                  "S(Q) dsigma/dOmega(barn/sr/atom) I_s I_c I_h I_v K B\n"
                   "I_s: sample single scattering before the Placzek correction; I_v: vanadium "
-                  "after it; K = I_v / (P_v/4pi)")
+                  "after it, = K P_v/4pi; B: room background")
         np.savetxt(DATA / f"truth_{scale}.dat",
                    np.column_stack([x] + [truth[c] for c in cols]), fmt="%14.8g", header=header)
 
     # CORRECT command file with the same input as run_correction(method="pycorrect")
     st = build_state(m, files={"sample": "I_SCE.adat", "container": "I_CE.adat",
-                               "vanadium": "I_VE.adat", "environment": "I_E.adat"})
+                               "vanadium": "I_VE.adat", "environment": "I_E.adat",
+                               "background": "I_ACE.adat"},
+                     environment="furnace", vanadium_in_environment=True)
     sp = st.species[0]
-    com = f"""! Synthetic D4 example: Ni powder in a V can, in a furnace (used as background).
-! CORRECT cannot use the absorber measurement (I_ACE.adat).
+    com = f"""! Synthetic D4 example: Ni powder in a V can, in a V furnace; vanadium in the furnace.
+! CORRECT cannot treat the absorber measurement as a configuration: it is used here
+! as the background of every measurement (the closest CORRECT can do).
 ! Cross sections and densities from ToScaNA's tables (same as build_state).
 ! Run from this folder:  python -m toscana.corrections.pycorrect Ni_powder.com
 instrument d4
@@ -234,8 +246,9 @@ beam {st.beam_height:.4f} {st.beam_width:.4f}
 sample I_SCE.adat {st.ca_r1:.4f} /density={st.sa_rho:.6f} /temperature={st.sa_temp} /fullness={st.sa_fullness}
 component 1.0 {sp.weight:.4f} {sp.scatt_cs:.4f} {sp.abs_cs:.4f}
 container I_CE.adat {st.ca_r2:.4f} /density={st.ca_rho:.6f} /scattering={st.ca_scat_cs:.4f} /absorption={st.ca_abs_cs:.4f}
-vanadium I_VE.adat {st.va_r:.4f} /density={st.va_rho:.6f} /scattering={st.va_scat_cs:.4f} /absorption={st.va_abs_cs:.4f}
-background I_E.adat
+furnace I_E.adat {st.fu_r1:.4f} {st.fu_r2:.4f} /density={st.fu_rho:.6f} /scattering={st.fu_scat_cs:.4f} /absorption={st.fu_abs_cs:.4f}
+vanadium I_VE.adat {st.va_r:.4f} /furnace /density={st.va_rho:.6f} /scattering={st.va_scat_cs:.4f} /absorption={st.va_abs_cs:.4f}
+background I_ACE.adat
 placzek series
 spectrum 1
 output Ni_powder_pycorrect.dat

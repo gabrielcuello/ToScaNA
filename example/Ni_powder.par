@@ -19,7 +19,7 @@
 <Cshape> cylinder 5.0 5.2 60.0 # container: type id od height (mm)
 <Nmater> V # normaliser
 <Nshape> cylinder 0.0 6.08 60.0 # vanadium rod
-<Amater> B10 # absorber: 10B powder in the container
+<Amater> [10B]@1.25 # absorber: 10B powder (g/cm3) in the container
 <Ashape> cylinder 0.0 5.0 60.0 # absorber
 <Emater> V # environment
 <Eshape> cylinder 40.0 40.2 100.0 # furnace shield

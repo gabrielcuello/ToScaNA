@@ -163,16 +163,22 @@ class CorrectionResult:
         Å.
     method : str
         "mcams" or "pycorrect" (with "+mcams-delta"/"+mcams-all").
-    factors, vanadium_factors : FactorSet or None
+    factors, vanadium_factors, absorber_factors : FactorSet or None
         Paalman & Pings factors, transmissions and multiple scattering of the
-        sample set-up and of the vanadium set-up, on the data grid
-        (``.table("q")``, ``.save(file, scale="q")``).
+        sample, vanadium and absorber set-ups, on the data grid
+        (``.table("q")``, ``.save(file, scale="q")``). With the absorber as a
+        configuration, the vanadium set-up only holds the configurations not
+        already in the sample set-up (e.g. ``"vh"``).
     intensities : dict
         Single-scattering intensities per body after the subtraction
-        (``"I_s"``, ``"I_c"``, ``"I_h"``, ``"I_v"``, ``"I_v_smooth"``) and their
-        errors (``"<key>_err"``), on the data grid (mcams method).
+        (``"I_s"``, ``"I_c"``, ``"I_h"``, ``"I_v"``, ``"I_v_smooth"``; with the
+        absorber as a configuration also ``"K"``), their errors
+        (``"<key>_err"``) and the multiple scattering ``"MS_<config>"``, on
+        the data grid (mcams method).
     backgrounds : dict
-        Background subtracted from each measurement (``"B_<config>"``).
+        Background subtracted from each measurement (``"B_<config>"``), or the
+        room background ``"B"`` (and ``"B_err"``) common to all measurements
+        when the absorber is a configuration.
     pycorrect : dict or None
         Full pycorrect result (method "pycorrect"; with MCAMS factors, the
         run that used them).
@@ -192,6 +198,7 @@ class CorrectionResult:
     method: str
     factors: Any = None
     vanadium_factors: Any = None
+    absorber_factors: Any = None
     intensities: dict = field(default_factory=dict)
     backgrounds: dict = field(default_factory=dict)
     pycorrect: Optional[dict] = None
@@ -204,7 +211,8 @@ class CorrectionResult:
         ``<basename>_vanadium_factors.dat`` on the chosen scale; returns the
         file names."""
         out = []
-        for fs, tag in ((self.factors, "sample"), (self.vanadium_factors, "vanadium")):
+        for fs, tag in ((self.factors, "sample"), (self.vanadium_factors, "vanadium"),
+                        (self.absorber_factors, "absorber")):
             if fs is not None:
                 name = f"{basename}_{tag}_factors.dat"
                 fs.save(name, scale=scale, heading=[f"{tag} set-up"])
@@ -290,6 +298,8 @@ def run_correction(
     materials: Optional[Mapping[str, tuple]] = None,
     factors: Any = None,
     vanadium_factors: Any = None,
+    absorber_factors: Any = None,
+    absorber_model: str = "auto",
     factor_options: Optional[Mapping[str, Any]] = None,
     mcams: Optional[str] = None,
     mcams_options: Optional[Mapping[str, Any]] = None,
@@ -329,9 +339,23 @@ def run_correction(
         CORRECT).
     materials : mapping, optional
         Extra container/environment materials.
-    factors, vanadium_factors : FactorSet, optional
+    factors, vanadium_factors, absorber_factors : FactorSet, optional
         Precomputed factors (e.g. from a previous run or a file) instead of
         computing them; must be on the data grid.
+    absorber_model : {"auto", "configuration", "transmission"}
+        How the absorber measurement is used (method "mcams").
+        ``"configuration"``: the absorber (``<Ashape>``, ``<Amater>``, e.g.
+        ``[10B]@1.25``) was measured in the container in the environment; that
+        measurement is one more configuration (``"ach"``) of the Paalman &
+        Pings system, whose factors A_h,ach, A_c,ach, A_a,ach are computed.
+        All the measurements without sample (E, CE, ACE, VE, and the empty
+        instrument if given) are then linear in the unknowns room background
+        B, I_h, I_c and the vanadium constant K, solved for at each angle
+        (weighted least squares; errors propagated with correlations).
+        Needs ``environment="layer"`` (or "none").
+        ``"transmission"``: B_C = T_C I_empty + (1 - T_C) I_absorber.
+        ``"auto"`` (default): "configuration" if ``environment="layer"`` and
+        an absorber measurement and material are given, else "transmission".
     factor_options : mapping, optional
         Passed to `compute_factors` (n_points, ms_particles, step_deg,
         ms_fit_degree, seed).
@@ -355,7 +379,8 @@ def run_correction(
     from toscana.corrections.setup import setups_from_measurement
 
     if method == "pycorrect":
-        return _run_pycorrect(m, files=files, environment=environment, placzek=placzek,
+        return _run_pycorrect(m, files=files, environment=environment,
+                              vanadium_in_environment=vanadium_in_environment, placzek=placzek,
                               vanadium_smoothing=vanadium_smoothing, materials=materials,
                               mcams=mcams, mcams_options=mcams_options, workdir=workdir,
                               output=output, verbose=verbose)
@@ -365,6 +390,8 @@ def run_correction(
         raise ValueError("mcams= is for method='pycorrect'; method='mcams' always uses MCAMS.")
     if placzek not in ("series", "diatomic", "none"):
         raise ValueError("placzek must be 'series', 'diatomic' or 'none'.")
+    if absorber_model not in ("auto", "configuration", "transmission"):
+        raise ValueError("absorber_model must be 'auto', 'configuration' or 'transmission'.")
     env_mode = "layer" if environment == "furnace" else environment
     sample_setup, van_setup = setups_from_measurement(
         m, environment=env_mode, vanadium_in_environment=vanadium_in_environment,
@@ -389,6 +416,32 @@ def run_correction(
 
     opts = dict(factor_options or {})
     fs = factors or compute_factors(sample_setup, theta, **opts)
+
+    has_absorber_material = str(m.absorber[0]).strip().lower() not in ("", "none")
+    model = absorber_model
+    if model == "auto":
+        model = ("configuration" if env_mode == "layer" and "absorber" in data
+                 and has_absorber_material else "transmission")
+    if model == "configuration":
+        if env_mode == "background":
+            raise ValueError("absorber_model='configuration' needs environment='layer' (or "
+                             "'none'): the environment must be a body of the set-up.")
+        if "absorber" not in data or not has_absorber_material:
+            raise ValueError("absorber_model='configuration' needs an absorber measurement "
+                             "and its material (<Amater>).")
+        from toscana.corrections.setup import absorber_setup_from_measurement
+
+        abs_setup = absorber_setup_from_measurement(m, environment=env_mode, materials=materials)
+        cfg_a = [c for c in abs_setup.configurations() if "a" in c]
+        fa = absorber_factors or compute_factors(abs_setup, theta, configurations=cfg_a, **opts)
+        van_cfgs = [c for c in van_setup.configurations() if c not in fs.configurations]
+        fv = vanadium_factors or compute_factors(van_setup, theta, configurations=van_cfgs,
+                                                 **opts)
+        notes.append("absorber measurement used as configuration "
+                     f"{cfg_a[0]!r}: B, I_h, I_c and K solved together at each angle")
+        return _solve_system(m, theta, lam, data, fs, fv, fa,
+                             (sample_setup, van_setup, abs_setup), placzek,
+                             vanadium_smoothing, notes)
     fv = vanadium_factors or compute_factors(van_setup, theta, **opts)
 
     def measurement_of(cfg):
@@ -480,6 +533,150 @@ def run_correction(
                             backgrounds=backgrounds, notes=notes)
 
 
+def _solve_system(m, theta, lam, data, fs, fv, fa, setups, placzek, vanadium_smoothing, notes):
+    """Paalman & Pings system with the absorber as a configuration.
+
+    Every measurement without sample, configuration C (E, CE, ACE, VE, and
+    the empty instrument if given), is linear in the unknowns
+    x = (B, I_b for the free bodies h, c, ..., K):
+
+        M_C = B + Σ_{b free} A_b,C I_b
+                + K [A_v,C (1 - P_v) P_v/4π + A_a,C P_a/4π + δ_C Σ_b A_b,C P_b/4π]
+
+    (vanadium and absorber are isotropic scatterers of known power P; the
+    multiple scattering is δ_C K times the isotropic single scattering).
+    Solved at each angle by weighted least squares, x = G M. Then
+
+        I_s = (M_sc.. - B - Σ A_b,C I_b - δ_C K Σ A_b,C P_b/4π) / A_s,C
+        dσ/dΩ = I_s / (K n<L>_s) + Σ c_i σ_i/4π P_i,
+
+    with first-order errors from all the measurements (correlations kept).
+    """
+    from toscana.corrections.pycorrect.correct_2axis import smooth_vanadium, smooth_vanadium_sg
+    from toscana.corrections.pycorrect.state import CorrectState
+
+    sample_setup, van_setup, abs_setup = setups
+    four_pi = 4 * math.pi
+    n = len(theta)
+    p_v = _placzek(theta, lam, Element("V").weight, 300.0, placzek)
+
+    def file_of(cfg):
+        for body, key in (("s", "sample"), ("v", "vanadium"), ("a", "absorber"),
+                          ("c", "container")):
+            if body in cfg:
+                return key
+        return "environment" if cfg else "empty"
+
+    # equations: (label, configuration, factor set, set-up)
+    eqs, seen = [], set()
+    for fset, setup in ((fs, sample_setup), (fv, van_setup), (fa, abs_setup)):
+        for cfg in fset.configurations:
+            if "s" in cfg or cfg in seen:
+                continue
+            key = file_of(cfg)
+            if key not in data:
+                raise ValueError(f"No measurement for configuration {cfg!r} ({key} file).")
+            eqs.append((key, cfg, fset, setup))
+            seen.add(cfg)
+    if "empty" in data:
+        eqs.append(("empty", "", None, None))
+    free = [b for b in sample_setup.bodies if b not in ("s", "a", "v")]
+    unknowns = ["B"] + [f"I_{b}" for b in free] + ["K"]
+    iK = len(unknowns) - 1
+
+    def k_coefficient(cfg, fset, setup, exclude=""):
+        c = np.zeros(n)
+        if "v" in cfg and "v" not in exclude:
+            c = c + fset.A[f"A_v,{cfg}"] * (1 - p_v) * setup.scattering_power("v") / four_pi
+        if "a" in cfg and "a" not in exclude:
+            c = c + fset.A[f"A_a,{cfg}"] * setup.scattering_power("a") / four_pi
+        iso = sum(fset.A[f"A_{b},{cfg}"] * setup.scattering_power(b) for b in cfg)
+        return c + fset.delta.get(f"delta_{cfg}", 0.0) * iso / four_pi
+
+    A = np.zeros((n, len(eqs), len(unknowns)))
+    M = np.zeros((n, len(eqs)))
+    S = np.zeros((n, len(eqs)))
+    for j, (key, cfg, fset, setup) in enumerate(eqs):
+        A[:, j, 0] = 1.0
+        for b in cfg:
+            if b in free:
+                A[:, j, unknowns.index(f"I_{b}")] = fset.A[f"A_{b},{cfg}"]
+        if cfg:
+            A[:, j, iK] = k_coefficient(cfg, fset, setup)
+        M[:, j], S[:, j] = data[key]
+    if len(eqs) < len(unknowns):
+        raise ValueError(f"{len(eqs)} measurements for {len(unknowns)} unknowns "
+                         f"({', '.join(unknowns)}).")
+
+    positive = S[S > 0]
+    w = 1 / np.maximum(S, positive.min() if positive.size else 1.0) ** 2   # weights 1/σ²
+
+    def solve(A_, M_):
+        atw = np.transpose(A_, (0, 2, 1)) * w[:, None, :]
+        G = np.linalg.solve(atw @ A_, atw)               # (n, unknowns, equations)
+        return G, np.einsum("nue,ne->nu", G, M_)
+
+    G, x = solve(A, M)
+    k = x[:, iK]
+    k_err = np.sqrt(np.einsum("ne,ne->n", G[:, iK, :] ** 2, S ** 2))
+    k_used = k
+    if vanadium_smoothing != 0:
+        if vanadium_smoothing > 0:
+            k_used = smooth_vanadium(theta, k, np.maximum(k_err, 1e-30), vanadium_smoothing)
+        else:
+            st0 = CorrectState()
+            k_used = smooth_vanadium_sg(theta, k, vanadium_smoothing, lam,
+                                        st0.calib_ur, st0.calib_vr, st0.calib_wr)
+        # other unknowns with the smoothed K (its noise no longer propagated)
+        G_r, x_r = solve(A[:, :, :iK], M - A[:, :, iK] * k_used[:, None])
+        G = np.concatenate([G_r, np.zeros((n, 1, len(eqs)))], axis=1)
+        x = np.concatenate([x_r, k_used[:, None]], axis=1)
+
+    # the sample configuration
+    cfg_s = [c for c in fs.configurations if "s" in c][-1]
+    m_s, s_s = data["sample"]
+    r = np.zeros((n, len(unknowns)))
+    r[:, 0] = 1.0
+    for b in cfg_s:
+        if b in free:
+            r[:, unknowns.index(f"I_{b}")] = fs.A[f"A_{b},{cfg_s}"]
+    r[:, iK] = k_coefficient(cfg_s, fs, sample_setup)
+    a_s = fs.A[f"A_s,{cfg_s}"]
+    i_s = (m_s - np.einsum("nu,nu->n", r, x)) / a_s
+    di_s = -np.einsum("nu,nue->ne", r, G) / a_s[:, None]  # d I_s / d M_j
+    i_s_err = np.sqrt((s_s / a_s) ** 2 + np.einsum("ne,ne->n", di_s ** 2, S ** 2))
+
+    nl = fs.atoms_per_area["s"]
+    dcs = i_s / (k_used * nl)
+    dk = G[:, iK, :]
+    ddcs = di_s / (k_used * nl)[:, None] - (i_s / (k_used ** 2 * nl))[:, None] * dk
+    err = np.sqrt((s_s / (a_s * k_used * nl)) ** 2 + np.einsum("ne,ne->n", ddcs ** 2, S ** 2))
+    comp = sample_setup.layers_of("s")[0].composition
+    for symbol, c in comp.items():
+        e = Element(symbol)
+        dcs = dcs + c * e.sig_sca / four_pi * _placzek(theta, lam, e.weight, float(m.TempK),
+                                                       placzek)
+
+    p_vs = van_setup.scattering_power("v") / four_pi
+    intensities = {"I_s": i_s, "I_s_err": i_s_err}
+    for b in free:
+        i = unknowns.index(f"I_{b}")
+        intensities[f"I_{b}"] = x[:, i]
+        intensities[f"I_{b}_err"] = np.sqrt(np.einsum("ne,ne->n", G[:, i, :] ** 2, S ** 2))
+    intensities.update({"I_v": k * p_vs, "I_v_err": k_err * p_vs, "I_v_smooth": k_used * p_vs,
+                        "K": k_used, "K_err": k_err})
+    for key, cfg, fset, setup in eqs + [("sample", cfg_s, fs, sample_setup)]:
+        if cfg:
+            iso = sum(fset.A[f"A_{b},{cfg}"] * setup.scattering_power(b) for b in cfg)
+            intensities[f"MS_{cfg}"] = fset.delta.get(f"delta_{cfg}", 0.0) * k_used * iso / four_pi
+    backgrounds = {"B": x[:, 0],
+                   "B_err": np.sqrt(np.einsum("ne,ne->n", G[:, 0, :] ** 2, S ** 2))}
+    q = 4 * math.pi / lam * np.sin(np.radians(theta) / 2)
+    return CorrectionResult(theta=theta, q=q, dcs=dcs, err=err, wavelength=lam, method="mcams",
+                            factors=fs, vanadium_factors=fv, absorber_factors=fa,
+                            intensities=intensities, backgrounds=backgrounds, notes=notes)
+
+
 # ============================================================================
 # pycorrect (CORRECT 2.24) path
 # ============================================================================
@@ -494,6 +691,7 @@ def build_state(
     *,
     files: Optional[Mapping[str, str]] = None,
     environment: str = "background",
+    vanadium_in_environment: bool = False,
     placzek: str = "series",
     vanadium_smoothing: int = 0,
     materials: Optional[Mapping[str, tuple]] = None,
@@ -515,6 +713,9 @@ def build_state(
         ``"background"`` (default): the environment measurement is the
         background of every measurement; ``"furnace"``/``"layer"``: a furnace
         with the dimensions and material of ``m.environ``; ``"none"``.
+    vanadium_in_environment : bool
+        With a furnace: the vanadium was measured in it (CORRECT's
+        ``vanadium /furnace``).
     placzek : {"series", "diatomic", "none"}
     vanadium_smoothing : int
         CORRECT's ``/smoothing`` of the vanadium (0: none).
@@ -611,6 +812,7 @@ def build_state(
         st.files["furnace"] = env_file
         st.fu_r1, st.fu_r2 = float(m.environ[2]) / 20, float(m.environ[3]) / 20
         st.fu_rho, st.fu_scat_cs, st.fu_abs_cs = material_properties(m.environ[0], materials)
+        st.va_furnace = bool(vanadium_in_environment) and st.has("vanadium")
     if files.get("background"):
         for key in ("bkg_furnace", "bkg_container", "bkg_sample", "bkg_vanadium"):
             st.files[key] = files["background"]
@@ -621,7 +823,7 @@ def _angle_files(m, files, lam, workdir):
     """Copies on the angle scale of the files that are on the Q scale."""
     out = dict(files or {})
     names = {"sample": m.File, "container": m.conFile, "vanadium": m.norFile,
-             "environment": m.envFile}
+             "environment": m.envFile, "background": ""}
     for key, default in names.items():
         path = out.get(key, default)
         if not str(path).strip() or not os.path.isfile(path):
@@ -638,8 +840,9 @@ def _angle_files(m, files, lam, workdir):
     return out
 
 
-def _run_pycorrect(m, *, files, environment, placzek, vanadium_smoothing, materials, mcams,
-                   mcams_options, workdir, output, verbose) -> CorrectionResult:
+def _run_pycorrect(m, *, files, environment, vanadium_in_environment, placzek,
+                   vanadium_smoothing, materials, mcams, mcams_options, workdir, output,
+                   verbose) -> CorrectionResult:
     from toscana.corrections.factors import FactorSet
     from toscana.corrections.pycorrect.correct_2axis import correct_2axis
 
@@ -649,7 +852,7 @@ def _run_pycorrect(m, *, files, environment, placzek, vanadium_smoothing, materi
     tmp = workdir or tempfile.mkdtemp(prefix="toscana_pycorrect_")
     os.makedirs(tmp, exist_ok=True)
     st = build_state(m, files=_angle_files(m, files, lam, tmp), environment=environment,
-                     placzek=placzek, vanadium_smoothing=vanadium_smoothing, materials=materials,
+                     vanadium_in_environment=vanadium_in_environment, placzek=placzek, vanadium_smoothing=vanadium_smoothing, materials=materials,
                      output=os.path.join(tmp, os.path.basename(output)))
     first = correct_2axis(st, verbose=verbose)[0]
     final, mc, label = first, None, "pycorrect"
@@ -683,7 +886,12 @@ def _run_pycorrect(m, *, files, environment, placzek, vanadium_smoothing, materi
                    {"note": "CORRECT's definitions: delta_sa is subtracted as "
                             "delta*sigma_s/4pi after normalisation"})
     fv = None
-    if st.has("vanadium"):
+    if st.has("vanadium") and st.va_furnace and has_h:
+        av = {"A_h,h": final["ahhv"], "A_v,vh": final["avvch"], "A_h,vh": final["ahvch"]}
+        fv = FactorSet(theta, lam, ["h", "vh"], av, {k: np.zeros_like(v) for k, v in av.items()},
+                       {"delta_vh": np.broadcast_to(final["delta_va"], theta.shape).copy()},
+                       {"delta_vh": np.zeros_like(theta)}, {}, {}, label)
+    elif st.has("vanadium"):
         fv = FactorSet(theta, lam, ["v"], {"A_v,v": final["avvch"]},
                        {"A_v,v": np.zeros_like(theta)},
                        {"delta_v": np.broadcast_to(final["delta_va"], theta.shape).copy()},

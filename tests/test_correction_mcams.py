@@ -118,7 +118,7 @@ class TestComplexSetup(unittest.TestCase):
         cls._tmp = in_tempdir()
         cls.folder = cls._tmp.__enter__()
         cls.m, cls.truth = make_complex_experiment(cls.folder)
-        cls.result = run_correction(cls.m, environment="layer", placzek="none",
+        cls.result = run_correction(cls.m, environment="layer", placzek="none", absorber_model="transmission",
                                     files=cls.truth["files"], factor_options=FAST)
 
     @classmethod
@@ -150,7 +150,7 @@ class TestComplexSetup(unittest.TestCase):
     def test_precomputed_factors(self) -> None:
         from toscana.workflows.correction import run_correction
 
-        r = run_correction(self.m, environment="layer", placzek="none", files=self.truth["files"],
+        r = run_correction(self.m, environment="layer", placzek="none", absorber_model="transmission", files=self.truth["files"],
                            factors=self.truth["fs"], vanadium_factors=self.truth["fv"])
         np.testing.assert_allclose(r.dcs, self.truth["dcs"], rtol=1e-7)
 
@@ -160,7 +160,7 @@ class TestComplexSetup(unittest.TestCase):
         files = dict(self.truth["files"], absorber="")
         m = copy.copy(self.m)
         m.absorber = ["None"] + list(m.absorber[1:])
-        r = run_correction(m, environment="layer", placzek="none", files=files,
+        r = run_correction(m, environment="layer", placzek="none", absorber_model="transmission", files=files,
                            factors=self.truth["fs"], vanadium_factors=self.truth["fv"])
         # ignoring the absorber biases the result far beyond rounding (1e-7)
         self.assertGreater(float(np.abs(r.dcs / self.truth["dcs"] - 1).max()), 1e-4)

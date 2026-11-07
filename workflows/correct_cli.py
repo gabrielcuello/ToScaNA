@@ -15,6 +15,11 @@ Usage
     --environment {background,layer,none}
     --vanadium-in-environment      the vanadium was measured inside the environment
     --no-absorber                  ignore the absorber measurement
+    --absorber-model {auto,configuration,transmission}
+                                   absorber as a configuration of the P&P system
+                                   (environment layer) or B = T I_empty + (1-T) I_abs
+    --background FILE              pycorrect: subtracted from every measurement;
+                                   mcams: empty-instrument measurement
     --placzek {series,diatomic,none}
     --vanadium-smoothing N
     --n-points N --ms-particles N --seed N   MCAMS statistics
@@ -24,7 +29,8 @@ Usage
 Outputs (``<title>`` from ``<Stitle>``, ``<m>`` the method), in ``--outdir``,
 for each requested scale ``<s>`` (``q`` or ``angle``):
 
-* ``<title>_<m>_sample_factors_<s>.dat``, ``..._vanadium_factors_<s>.dat``:
+* ``<title>_<m>_sample_factors_<s>.dat``, ``..._vanadium_factors_<s>.dat``
+  (and ``..._absorber_factors_<s>.dat`` with the absorber as a configuration):
   Paalman & Pings factors A_b,C, multiple scattering δ_C, transmissions
   T_C, n<L> and scattering powers (header);
 * ``<title>_<m>_intensities_<s>.dat``: I_s, I_c, I_h, I_v (with errors),
@@ -63,6 +69,11 @@ def _parser() -> argparse.ArgumentParser:
                    default="background")
     p.add_argument("--vanadium-in-environment", action="store_true")
     p.add_argument("--no-absorber", action="store_true")
+    p.add_argument("--background", metavar="FILE",
+                   help="pycorrect: file subtracted from every measurement (e.g. the absorber); "
+                        "mcams: empty-instrument measurement")
+    p.add_argument("--absorber-model", choices=["auto", "configuration", "transmission"],
+                   default="auto")
     p.add_argument("--placzek", choices=["series", "diatomic", "none"], default="series")
     p.add_argument("--vanadium-smoothing", type=int, default=0)
     p.add_argument("--n-points", type=int, default=100_000)
@@ -103,14 +114,18 @@ def main(argv: Optional[Sequence[str]] = None):
             files["empty"] = files.get("environment", "")
     if a.no_absorber:
         files["absorber"] = ""
+    if a.background:
+        files["background" if a.method == "pycorrect" else "empty"] = a.background
     options = dict(method=a.method, files=files, environment=a.environment,
                    placzek=a.placzek, vanadium_smoothing=a.vanadium_smoothing)
     if a.method == "mcams":
         options.update(vanadium_in_environment=a.vanadium_in_environment,
+                       absorber_model=a.absorber_model,
                        factor_options=dict(n_points=a.n_points, ms_particles=a.ms_particles,
                                            seed=a.seed))
     else:
-        options.update(mcams=a.mcams, output=f"{m.Title}_pycorrect_raw.dat",
+        options.update(vanadium_in_environment=a.vanadium_in_environment,
+                       mcams=a.mcams, output=f"{m.Title}_pycorrect_raw.dat",
                        workdir=os.path.join(a.outdir, "pycorrect_work"))
     say(f"{m.Title}: method={a.method}, input={a.input}, environment={a.environment}")
     res = run_correction(m, **options)
@@ -122,7 +137,8 @@ def main(argv: Optional[Sequence[str]] = None):
     scales = ["q", "angle"] if a.scale == "both" else [a.scale]
     written = []
     for s in scales:
-        for fs, tag in ((res.factors, "sample"), (res.vanadium_factors, "vanadium")):
+        for fs, tag in ((res.factors, "sample"), (res.vanadium_factors, "vanadium"),
+                        (res.absorber_factors, "absorber")):
             if fs is not None:
                 name = f"{stem}_{tag}_factors_{s}.dat"
                 fs.save(name, scale=s, heading=[f"{m.Title}: {tag} set-up"])
