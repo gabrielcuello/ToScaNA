@@ -196,11 +196,22 @@ def getDiffA(  # noqa: N802 (legacy API)
             # angmax raised IndexError. Out-of-range parts are now discarded.
             a1 = int(np.floor(ang1))
             a2 = int(np.floor(ang2))
-            frac1 = 1.0 - (ang1 - a1)
-            frac2 = ang1 - a1
             det = int(cell[ang] / 1000)
-            for a, frac in ((a1, frac1), (a2, frac2)):
-                if frac <= 0.0 or a < 0 or a >= nangles:
+            # Fraction of the cell [angle1, angle2] falling in each bin
+            # a = a1..a2, bin a covering [angmin + a*angstep, angmin + (a+1)*angstep):
+            #   frac_a = overlap / cell width.
+            # Bug fix vs legacy (audit 2026-11): legacy used 1-(ang1-a1) and
+            # ang1-a1, i.e. fractions in units of the BIN; they are right only
+            # when the step equals the cell width (the default), and for a
+            # larger step split a cell straddling an edge wrongly (0.25/0.75
+            # instead of 0.5/0.5 for a 0.25 deg step).
+            for a in range(a1, a2 + 1):
+                lower = max(angle1, angmin + a * angstep)
+                upper = min(angle2, angmin + (a + 1) * angstep)
+                frac = (upper - lower) / angular_step
+                # 1e-12: a cell edge falling exactly on a bin edge can leave a
+                # rounding residue; it must not make an empty bin non-empty.
+                if frac <= 1e-12 or a < 0 or a >= nangles:
                     continue
                 w = frac * mon
                 for d in (0, det):

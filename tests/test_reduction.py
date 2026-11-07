@@ -147,6 +147,117 @@ class TestGetDiffA(unittest.TestCase):
         self.assertTrue(np.all(np.isnan(diff[0, 1, -45:])))
 
 
+def _one_cell(center: float, step: float) -> np.ndarray:
+    """Regroup a single cell (width 8/64 = 0.125 deg) centred at `center`."""
+    numor = np.zeros((1, 5, 1))
+    numor[0, 0, 0] = center
+    numor[0, 1, 0] = 1.0
+    numor[0, 2, 0] = 1.0
+    numor[0, 4, 0] = 1001
+    info = {"angular_scale": (0.0, 20.0, step), "angular_range_bank": 8.0, "wavelength": 0.5}
+    return quiet(getDiffA, numor, [{"ndet": 9, "ncell": 64, "MonitorCnts": 1e6}], info)
+
+
+def _overlap_weights(centers: np.ndarray, width: float, edges: np.ndarray) -> np.ndarray:
+    """Independent reference: overlap of each cell with each bin / cell width."""
+    lo, hi = centers - width / 2, centers + width / 2
+    weights = np.zeros(len(edges) - 1)
+    for j in range(len(edges) - 1):
+        overlap = np.clip(np.minimum(hi, edges[j + 1]) - np.maximum(lo, edges[j]), 0, None)
+        weights[j] = overlap.sum() / width
+    return weights
+
+
+class TestGetDiffASplit(unittest.TestCase):
+    """Cells split between bins by their overlap (bug found while documenting)."""
+
+    def test_cell_straddling_an_edge_with_larger_step(self) -> None:
+        d = _one_cell(10.25, 0.25)  # cell [10.1875, 10.3125], edge at 10.25
+        i = 40  # bin [10.00, 10.25)
+        np.testing.assert_allclose(d[0, 3, i : i + 2], [0.5, 0.5])
+
+    def test_cell_inside_one_bin(self) -> None:
+        d = _one_cell(10.125, 0.25)  # [10.0625, 10.1875] inside [10.0, 10.25)
+        self.assertAlmostEqual(d[0, 3, 40], 1.0)
+        self.assertTrue(np.isnan(d[0, 1, 41]))  # neighbouring bin stays empty
+
+    def test_weights_equal_overlaps_for_several_steps(self) -> None:
+        numor = _numors(n=1)
+        cells = numor[0, 0, :]
+        for step in (0.125, 0.2, 0.25, 0.3, 0.5):
+            info = dict(TestGetDiffA.run_info, angular_scale=(0.0, 140.0, step))
+            d = quiet(getDiffA, numor, TestGetDiffA.head[:1], info)
+            edges = np.append(d[0, 0, :], d[0, 0, -1] + step)
+            expected = _overlap_weights(cells, 0.125, edges)
+            with self.subTest(step=step):
+                np.testing.assert_allclose(d[0, 3, :], expected, atol=1e-12)
+                # every cell is fully inside the grid: total weight = number of cells
+                self.assertAlmostEqual(float(d[0, 3, :].sum()), len(cells), places=9)
+
+    def test_edge_on_bin_edge_leaves_next_bin_empty(self) -> None:
+        d = _one_cell(10.0625, 0.125)  # cell [10.0, 10.125] = exactly one bin
+        self.assertAlmostEqual(d[0, 3, 80], 1.0)
+        self.assertTrue(np.isnan(d[0, 1, 81]) and np.isnan(d[0, 1, 79]))
+
+
+class TestRunningParams(unittest.TestCase):
+    """getRunningParams: values never keep the newline (same fix as C25)."""
+
+    def test_values_at_end_of_line_and_extra_spaces(self) -> None:
+        import contextlib
+        import io
+
+        from toscana.dataio.running_params import getRunningParams
+
+        text = (
+            "# no inline comments, several spaces and a tab\n"
+            "<ins> D4\n"
+            "<Cmater>   V\n"
+            "<Cshape> cylinder\t5.0  5.2 60.0\n"
+            "<Sdescr> Silica glass at room temperature\n"
+            "<Sato01>   Si   1\n"
+            "<Sato02> O 2   # with a comment\n"
+            "<Stitle> SiO2_RT\n"
+            "<SaFile> sample.qdat\n"
+            "<wle> 0.4986\n"
+        )
+        buf = io.StringIO()
+        with in_tempdir() as tmp, contextlib.redirect_stdout(buf):
+            (tmp / "s.par").write_text(text)
+            p = getRunningParams("s.par")
+        self.assertEqual(buf.getvalue(), "")  # no false "not available" warning
+        self.assertEqual(p["<ins>"][1], "D4")
+        self.assertEqual(p["<Cmater>"][1], "V")
+        self.assertEqual(p["<Cshape>"][1:], ("cylinder", "5.0", "5.2", "60.0"))
+        self.assertEqual(p["<Sdescr>"][1], "Silica glass at room temperature")
+        self.assertEqual(p["<Sato01>"][1:], ("Si", "1"))
+        self.assertEqual(p["<Sato02>"][1:], ("O", "2"))
+        self.assertEqual(p["<SNelem>"][1], 2)
+        self.assertEqual(p["<Stitle>"][1], "SiO2_RT")
+        self.assertEqual(p["<SaFile>"][1], "sample.qdat")
+        self.assertEqual(p["<wle>"][1], 0.4986)
+
+    def test_unknown_material_still_warns(self) -> None:
+        import contextlib
+        import io
+
+        from toscana.dataio.running_params import getRunningParams
+
+        buf = io.StringIO()
+        with in_tempdir() as tmp, contextlib.redirect_stdout(buf):
+            (tmp / "s.par").write_text("<Cmater> Unobtainium\n")
+            getRunningParams("s.par")
+        self.assertIn("Unobtainium is not available", buf.getvalue())
+
+    def test_bad_first_character_raises(self) -> None:
+        from toscana.dataio.running_params import getRunningParams
+
+        with in_tempdir() as tmp:
+            (tmp / "s.par").write_text("ins D4\n")
+            with self.assertRaises(ValueError):
+                quiet(getRunningParams, "s.par")
+
+
 class TestRebin(unittest.TestCase):
     def test_bin_count(self) -> None:
         self.assertEqual(get_xlim(0.0, 0.3, 0.1)[0], 4)

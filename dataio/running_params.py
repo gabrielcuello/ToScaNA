@@ -32,19 +32,16 @@ from typing import Any
 
 def getRunningParams(parfile: str) -> dict[str, Any]:
     """
-    Read the parameters file for data treatment notebooks (legacy behavior).
+    Read the parameters file for data treatment notebooks.
 
-    Line syntax (legacy, NOT the C25-corrected parser of ``readParam``):
+    Line syntax (same rules as the corrected ``readParam`` parser, C25):
 
     - a line of length <= 1 (only the newline) is skipped; a line starting with
       ``#`` or ``!`` is a comment;
-    - any other line must start with ``<``; it is split with ``split(" ")``
-      (single spaces): token 0 is the tag, tokens 1, 2, ... the values.
-      Consequences: a value that is the LAST token of its line keeps the
-      trailing newline (``"D4\n"``); repeated spaces produce empty tokens
-      (``"<ins>  D4"`` gives ``""`` as value); numeric values are converted
-      with ``float``, which tolerates the newline. In practice each value line
-      should end with a space or with `` # comment``;
+    - any other line must start with ``<``. It is cut at the first ``#``
+      (inline comment, optional) and split on any whitespace: token 0 is the
+      tag, tokens 1, 2, ... the values. Values never contain the newline, and
+      several spaces or tabs between values are allowed;
     - unknown tags are silently ignored.
 
     Tags read (``inputPar[tag] = (label, ...)``; values are strings unless
@@ -72,10 +69,10 @@ def getRunningParams(parfile: str) -> dict[str, Any]:
         ``(label, type, inner diameter, outer diameter, height)`` as STRINGS;
         a warning is printed if the type is not ``cylinder``.
     Sample
-        ``<Sdescr>`` description: the text from character 9 of the line up to
-        the first ``#`` (if there is no ``#``, the last character is dropped);
+        ``<Sdescr>`` description: the whole text after the tag up to the first
+        ``#``, with surrounding spaces removed;
         ``<StempK>`` temperature, K (float); ``<SatoNN>`` (any tag starting
-        with ``<Sato``): from character 9 up to ``#``, split on spaces, giving
+        with ``<Sato``): the values after the tag, giving
         ``("Atom kk: ", symbol, number, ...)`` with kk the running count of such
         lines, and ``<SNelem>`` = ``("Number of elements:", count)``;
         ``<Sdegcc>`` density, g/cm³ (float); ``<Smassc>`` mass in the can, g
@@ -114,9 +111,17 @@ def getRunningParams(parfile: str) -> dict[str, Any]:
     `toscana.dataio.parameters.readParam`. It intentionally preserves the legacy
     dictionary shape (keys like `<ins>`, `<asc>`, ...).
 
-    Prints warnings for unknown materials and shapes. Because of the
-    ``split(" ")`` parsing, a material or shape type that is the last token of
-    its line includes the newline and triggers a spurious warning.
+    Prints warnings for unknown materials and shapes.
+
+    Changes from the legacy code (audit 2026-11, same defect as C25 in
+    ``readParam``): lines were split with ``split(" ")``, so a value that was
+    the last word of its line kept the newline (``<Cmater> V`` gave ``"V\\n"``
+    and a false "not available" warning; titles and file names ended with a
+    newline), repeated spaces produced empty values, and ``<Sdescr>`` /
+    ``<SatoNN>`` were read from fixed character positions (without ``#`` the
+    last character was dropped). Files written with a trailing comment on
+    every line, as the old parser required, give the same result as before,
+    except that the description no longer keeps the spaces before ``#``.
 
     See Also
     --------
@@ -152,7 +157,15 @@ def getRunningParams(parfile: str) -> dict[str, Any]:
         elif len(lines[i]) == 1:
             pass
         elif lines[i][0] == "<":
-            line = lines[i].split(" ")
+            # Bug fix vs legacy (audit 2026-11, same defect as C25 in
+            # readParam): legacy used lines[i].split(" "), so a value ending
+            # its line kept the newline ("V\n" -> false "not available"
+            # warning, title with a newline) and repeated spaces gave empty
+            # values. The line is now cut at "#" (inline comment) and split on
+            # any whitespace; `rest` is the text after the tag (descriptions).
+            content = lines[i].split("#")[0].rstrip()
+            line = content.split()
+            rest = content[len(line[0]):].strip()
 
             if line[0] == "<ins>":
                 inputPar[line[0]] = ("Instrument:", line[1])
@@ -324,19 +337,17 @@ def getRunningParams(parfile: str) -> dict[str, Any]:
                     )
 
             if line[0] == "<Sdescr>":
-                description = lines[i][9:]
-                hash = description.find("#")
-                inputPar[line[0]] = ("Sample description:  ", description[0:hash])
+                # Free text after the tag, up to "#" (legacy took characters
+                # 9.. and, without "#", dropped the last character).
+                inputPar[line[0]] = ("Sample description:  ", rest)
 
             if line[0] == "<StempK>":
                 inputPar[line[0]] = ("Sample temperature:  ", float(line[1]))
 
             if line[0][0:5] == "<Sato":
                 Nelements += 1
-                usefulinfo = lines[i][9:]
-                hash = usefulinfo.find("#")
-                atomdat = (usefulinfo[0:hash].strip()).split(" ")
-                atompar = [x for x in atomdat if x != ""]
+                # Values after the tag: symbol, number of atoms, ...
+                atompar = line[1:]
                 inputPar[line[0]] = ("Atom " + str(Nelements).zfill(2) + ": ", *atompar)
                 inputPar["<SNelem>"] = ("Number of elements:", Nelements)
 
