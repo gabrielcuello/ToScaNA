@@ -149,7 +149,8 @@ Commit & Content \\
 \tn{5cbaee8} & Docstrings for every module, class and function (documentation only). \\
 \tn{ece015d} & Splitting of cells in \code{getDiffA}; parser of the sample-description file. \\
 \tn{da86b8b} & D4Numor, MCAMS 2.7, pycorrect and the validation study, as received. \\
-(next) & Their integration into the package (Section~\ref{sec:integration}). \\
+\tn{91ee4bc} & Their integration into the package (Section~\ref{sec:integration}). \\
+(next) & Correction workflow: Measurement $\to$ pycorrect (MCAMS) $\to$ S(Q). \\
 \bottomrule
 \end{longtable}
 
@@ -794,6 +795,34 @@ manuals, examples, validation study & \code{docs/d4numor}, \code{docs/pycorrect}
     the CORRECT command language reads as a qualifier.
 \end{itemize}
 
+\paragraph{Step 2: the correction workflow.} The new module
+\code{workflows.correction} connects the regrouped data to S(Q)
+(user manual, section ``The complete workflow''):
+\code{build_state} translates a \code{Measurement} into pycorrect's state
+(mm $\to$ cm, effective atomic density, composition, container, vanadium,
+environment as background or furnace) with \emph{all cross sections from
+ToScaNA's isotope table} and container/furnace materials from
+\code{MATERIALS}; \code{run_correction} runs pycorrect and, with
+\code{mcams="delta"} or \code{"all"}, reruns it with MCAMS multiple-scattering
+(and attenuation) factors; \code{structure_factor} computes the Faber--Ziman
+S(Q) with errors, optionally on a regular Q grid. Two additions to pycorrect
+make this possible, both without effect on existing runs (its tests and the
+byte-identical D4 example still pass):
+\begin{itemize}
+  \item \code{fileio.read_file} accepts ToScaNA's \code{.adat} files: their
+    header lines start with \code{\#}, and the run number is written as a
+    list; before, pycorrect could not read them (``No block 1'');
+  \item \code{correct_2axis(..., factors=...)} replaces CORRECT's
+    Paalman--Pings factors and $\delta$ values (scalars or arrays over
+    $2\theta$) by given ones; shapes and keys are checked.
+\end{itemize}
+Validation: a synthetic experiment (Ni powder, packing 0.60, in a vanadium
+can; vanadium rod; background; files in ToScaNA's \code{.adat} format) built
+with exactly the physics CORRECT inverts is corrected back to the known S(Q)
+within $3\times10^{-5}$ (high-$Q$ mean 1.00005). With \code{mcams="delta"} the
+sample $\delta$ becomes 0.373--0.383 (angle dependent) instead of CORRECT's
+0.317, consistent with the validation study.
+
 \paragraph{Validation of the integration.}
 \begin{itemize}
   \item The test suites of pycorrect (5 tests) and MCAMS (all checks of its
@@ -988,7 +1017,7 @@ bars.
 
 \tssec{Organisation of the \texttt{tests} folder}
 
-\begin{longtable}{@{}l p{0.64\textwidth}@{}}
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.30\textwidth} p{0.64\textwidth}@{}}
 \toprule
 File & Role \\
 \midrule\endhead
@@ -1003,6 +1032,7 @@ File & Role \\
 \code{test_physical_choices.py} & Annulus volume, free cross sections, sigmoid, $Q_0$, weighted Ni fit. \\
 \code{test_misc.py} & Isotopes, data files, Ni calibration, \code{showTable}, project layout, text encoding. \\
 \code{test_integration.py} & NeXus reading in both formats, d4numor, pycorrect command line, MCAMS nuclear data, bridge. \\
+\code{test_workflow_correction.py}, \code{synthetic_d4.py} & The correction workflow on a synthetic experiment with known S(Q) (\code{synthetic_d4.make_experiment}). \\
 \code{test_pycorrect.py} & pycorrect's own tests (Paalman \& Pings vs brute force, multiple-scattering limits, parser, round trip of the whole correction chain, flat plate), with a \code{unittest} wrapper. \\
 \code{mcams_checks.py}, \code{test_mcams.py} & MCAMS's own self-test (paths vs brute force, exact interaction rates, direct method vs Monte Carlo, all geometries), run unchanged in a separate process by the wrapper. \\
 \bottomrule
@@ -1210,6 +1240,27 @@ prefix, grouped by test class.
 \tn{d4\_\allowbreak{}example\_\allowbreak{}reproduces\_\allowbreak{}recorded\_\allowbreak{}output} & \code{python -m toscana.corrections.pycorrect d4_example.com} writes a file byte-identical to the recorded one. \\
 \tn{toscana\_\allowbreak{}table\_\allowbreak{}backend}, \tn{layer\_\allowbreak{}builder\_\allowbreak{}default\_\allowbreak{}is\_\allowbreak{}toscana\_\allowbreak{}table} & MCAMS gets masses and cross sections from ToScaNA's table (D $\to$ H2, [56Fe] $\to$ Fe56, missing data raise). \\
 \tn{units\_\allowbreak{}and\_\allowbreak{}imports} & The bridge imports and converts cm $\leftrightarrow$ mm. \\
+\bottomrule
+\end{longtable}
+
+\tssub*{\texttt{test\_workflow\_correction.py}}
+\begin{longtable}{@{}p{0.36\textwidth} p{0.58\textwidth}@{}}
+\toprule Test & What is checked \\ \midrule\endhead
+\multicolumn{2}{@{}l}{\textit{TestEndToEnd}} (synthetic Ni powder in a V can, \code{tests/synthetic_d4.py}) \\
+\tn{recovers\_\allowbreak{}true\_\allowbreak{}structure\_\allowbreak{}factor} & Measurement $\to$ pycorrect $\to$ S(Q) gives the true S(Q) within $10^{-3}$ (observed $3\times10^{-5}$); high-$Q$ mean 1. \\
+\tn{correct\_\allowbreak{}factors\_\allowbreak{}match\_\allowbreak{}the\_\allowbreak{}forward\_\allowbreak{}model} & $\delta$ of sample and vanadium equal those of the forward model. \\
+\tn{errors\_\allowbreak{}propagated} & $\sigma_S = \sigma_{d\sigma/d\Omega}/\langle b\rangle^2$. \\
+\tn{regular\_\allowbreak{}q\_\allowbreak{}grid} & Rebinned S(Q) on a regular grid, within 0.02 of the truth (bin smoothing). \\
+\tn{feeds\_\allowbreak{}sinefT\_\allowbreak{}with\_\allowbreak{}errors}, \tn{save\_\allowbreak{}structure\_\allowbreak{}factor} & The result goes into \code{sineFT(..., with_errors=True)}; the S(Q) file reloads. \\
+\multicolumn{2}{@{}l}{\textit{TestMcams}} \\
+\tn{mcams\_\allowbreak{}delta\_\allowbreak{}replaces\_\allowbreak{}multiple\_\allowbreak{}scattering} & \code{mcams="delta"}: angle-dependent $\delta$, larger than CORRECT's; attenuation unchanged. \code{mcams="all"}: attenuation from MCAMS, within 3\,\% of CORRECT's. \\
+\multicolumn{2}{@{}l}{\textit{TestBuildState}} \\
+\tn{mapping\_\allowbreak{}from\_\allowbreak{}measurement} & Radii and beam in cm, effective density, ToScaNA cross sections for sample and vanadium, background files, Placzek. \\
+\tn{material\_\allowbreak{}properties} & V equals the vanadium constants; TiZr close to CORRECT's preset; custom materials; unknown names raise. \\
+\tn{invalid\_\allowbreak{}options} & Bad \code{environment}, \code{placzek}, \code{mcams}, and hollow samples raise. \\
+\multicolumn{2}{@{}l}{\textit{TestPycorrectAdditions}} \\
+\tn{factor\_\allowbreak{}override\_\allowbreak{}validation} & Unknown keys and wrong shapes raise; giving CORRECT's own value reproduces the result exactly. \\
+\tn{reads\_\allowbreak{}toscana\_\allowbreak{}adat} & pycorrect reads a ToScaNA \code{.adat} file identically to \code{np.loadtxt}. \\
 \bottomrule
 \end{longtable}
 
@@ -1966,7 +2017,9 @@ Manual: \code{docs/d4numor/MANUAL.md}.
 (\code{plate}, \code{polyfit}), \code{fileio}, \code{parse_line},
 \code{state}, \code{harwell}; data files \code{xsect.dat},
 \code{doublescattering.dat}. Units: cm. Manual and Fortran correspondence:
-\code{docs/pycorrect}.
+\code{docs/pycorrect}. Additions in ToScaNA: \code{read_file} reads ToScaNA's
+\code{.adat} files; \code{correct_2axis(st, verbose, factors=None)} accepts
+replacement factors.
 
 \tssub{\texttt{corrections.mcams} --- Monte Carlo attenuation and multiple scattering}
 Geometry: \code{beam}, \code{sample_base}, \code{slab}, \code{cylinder},
@@ -1976,6 +2029,19 @@ Geometry: \code{beam}, \code{sample_base}, \code{slab}, \code{cylinder},
 \code{formula}, \code{nuclear_data} (\code{ToscanaData}, default;
 \code{AtomicData}, periodictable), \code{layer_builder}; \code{run_simulation}.
 Units: mm. Manual with API reference (its Appendix A): \code{docs/mcams/manual}.
+
+\tssub{\texttt{workflows.correction} --- from \texttt{.adat} files to S(Q)}
+\sloppy
+\code{MATERIALS}: container/furnace materials (composition, density g/cm$^3$).
+\code{material_properties(material)} $\to$ (atomic density, $\sigma_s$,
+$\sigma_a$) from ToScaNA's table. \code{build_state(m, files=, environment=,
+placzek=, vanadium_smoothing=, materials=, output=)} $\to$ pycorrect
+\code{CorrectState}. \code{run_correction(m, mcams=None|"delta"|"all",
+mcams_options=, workdir=, verbose=, **state_options)} $\to$
+\code{CorrectionResult} (\code{theta}, \code{q}, \code{dcs}, \code{err},
+\code{factors}, \code{source}, \code{state}, \code{pycorrect}, \code{mcams}).
+\code{structure_factor(result, m, q_grid=None)} $\to$ array (Q, S, error).
+\code{save_structure_factor(filename, sq, heading)}.
 
 \tssub{\texttt{corrections.bridge}}
 \code{mcams_factors_like_pycorrect(state, theta, n_particles, n_batches)}:

@@ -51,6 +51,7 @@ numpy.array(..., float)   : convert lists to arrays
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -95,18 +96,38 @@ def _value(line: str) -> str:
     return line[13:].strip()
 
 
+def _unhash(line: str) -> str:
+    """Line without a leading '#' (ToScaNA writes its CORRECT-format headers as
+    '#Instrument: ...' so that the files also load with numpy.loadtxt)."""
+    stripped = line.lstrip()
+    return stripped[1:] if stripped.startswith("#") else line
+
+
+def _first_int(text: str) -> int:
+    """First integer in a header value, 0 if none.  Standard files have a
+    plain number; ToScaNA writes the run number as a list such as
+    "['454600-454620']"."""
+    m = re.search(r"-?\d+(?:\.\d*)?(?:[eE][-+]?\d+)?", text or "")
+    return int(float(m.group(0))) if m else 0
+
+
 def _parse_text(fname: str):
-    """Parse a whole TEXT-format file into a list of Block."""
+    """Parse a whole TEXT-format file into a list of Block.
+
+    Integration into ToScaNA (2026-11): header lines may start with '#', and
+    the run-number and spectrum fields are read as their first integer, so
+    that the .adat files written by ToScaNA's d4creg can be read; standard
+    CORRECT files are read exactly as before."""
     with open(fname) as fh:
         lines = fh.read().splitlines()
     blocks, i, n = [], 0, len(lines)
     while i < n:
         # find the next 'Instrument' header line (4 lines after start of block)
-        while i < n and not lines[i].lstrip().lower().startswith("instrument"):
+        while i < n and not _unhash(lines[i]).lstrip().lower().startswith("instrument"):
             i += 1
         if i >= n:
             break
-        hdr = [_value(lines[i + k]) for k in range(10)]
+        hdr = [_value(_unhash(lines[i + k])) for k in range(10)]
         i += 10
         hist = hdr[8].strip().upper().lstrip(".").startswith("T")
         npts = int(float(hdr[9]))
@@ -125,8 +146,8 @@ def _parse_text(fname: str):
             i += 1
         e = arr[:, 2] if arr.shape[1] > 2 else np.full(npts, 0.01)
         blocks.append(Block(arr[:, 0], arr[:, 1], e, hist, edge,
-                            hdr[0], hdr[1], int(float(hdr[2] or 0)),
-                            int(float(hdr[3] or 0)), hdr[4], hdr[5], hdr[6], hdr[7]))
+                            hdr[0], hdr[1], _first_int(hdr[2]),
+                            _first_int(hdr[3]), hdr[4], hdr[5], hdr[6], hdr[7]))
     return blocks
 
 

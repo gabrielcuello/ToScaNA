@@ -28,6 +28,18 @@ Fortran, a copy in the current directory takes precedence. Keep file names in
 `.com` files relative: in the command language `/` starts a qualifier, so an
 absolute path containing e.g. `/T...` is cut there (read as `/type`).
 
+## Additions in ToScaNA (2026-11)
+
+- `fileio.read_file` also reads the `.adat` files of ToScaNA's d4creg: header
+  lines may start with `#`, and the run number may be a list such as
+  `['454600-454620']` (its first integer is used). Standard files are read
+  as before.
+- `correct_2axis(st, verbose, factors=...)` accepts factors that replace
+  CORRECT's own: `assch`, `acsch`, `acch`, `ahsch`, `ahch`, `ahh`, `avvch`,
+  `delta_sa`, `delta_va` (scalars or arrays over 2θ). Used by
+  `toscana.workflows.correction.run_correction(m, mcams=...)` to apply Monte
+  Carlo factors from MCAMS. Without `factors` the calculation is unchanged.
+
 ## 1. Physics
 
 | Correction | Reference | Fortran | Python |

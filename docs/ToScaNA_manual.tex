@@ -186,7 +186,7 @@ and takes about 35 seconds:
 \begin{lstlisting}
 python /Users/cuello/AI-lab/ToScaNA-pilot/tests/run_tests.py
 ...
-Ran 109 tests in 80 s
+Ran 121 tests in 80 s
 OK
 \end{lstlisting}
 
@@ -233,12 +233,11 @@ A typical D4 experiment is analysed in this order.
     calibrated $\lambda$ and $2\theta_0$ (Chapter~\ref{ch:d4creg}).
   \item \textbf{Describe the experiment} in a sample-description file and
     build a \code{Measurement} (Chapter~\ref{ch:sample}).
-  \item \textbf{Correct} with pycorrect (or the Fortran CORRECT):
+  \item \textbf{Correct} with pycorrect, optionally with MCAMS factors:
     background and container subtraction, attenuation and multiple
-    scattering, normalisation to vanadium; MCAMS checks the factors
-    (Chapter~\ref{ch:corrections}).
-  \item \textbf{Obtain $S(Q)$}: subtract the self scattering, accounting for
-    inelasticity (Chapter~\ref{ch:models}).
+    scattering, normalisation to vanadium, Placzek; then
+    \textbf{obtain $S(Q)$} (\code{run_correction}, \code{structure_factor},
+    Section~\ref{sec:workflow}).
   \item \textbf{Transform to real space} and compute coordination numbers,
     with error bars (Chapter~\ref{ch:realspace}).
 \end{enumerate}
@@ -574,8 +573,9 @@ An unknown name raises \code{ValueError}.
 
 \section{Input for CORRECT}
 
-The command files can be run by the Fortran CORRECT or, inside ToScaNA, by
-pycorrect (Chapter~\ref{ch:corrections}). Two functions write them:
+With pycorrect inside ToScaNA no command file is needed: \code{run_correction}
+builds the input from the \code{Measurement} (Section~\ref{sec:workflow}). For
+the Fortran CORRECT, two functions write command files:
 \begin{itemize}
   \item \code{generate_com(template, name, rsample, density, ...)} fills the
     placeholders \texttt{\{pyfname\}}, \texttt{\{pyradius\_cm\}},
@@ -598,12 +598,90 @@ pycorrect (Chapter~\ref{ch:corrections}). Two functions write them:
 \chapter{Corrections: pycorrect and MCAMS}\label{ch:corrections}
 % =====================================================================
 
+\section{The complete workflow}\label{sec:workflow}
+
+\code{toscana.workflows.correction} connects the regrouped data to S(Q):
+the experiment is described once, in the sample-description file
+(Chapter~\ref{ch:sample}), and no CORRECT command file has to be written.
+\begin{lstlisting}[language=Python]
+import numpy as np
+from toscana.dataio.running_params import getRunningParams
+from toscana.experiment.measurement import Measurement
+from toscana.workflows.correction import (run_correction, structure_factor,
+                                          save_structure_factor)
+from toscana.numerics.fourier import sineFT
+from toscana.dataio.saving import saveRSCF
+
+m = Measurement(getRunningParams("SiO2_RT.par"))   # files: the .adat of d4creg
+res = run_correction(m)                  # pycorrect, CORRECT's factors
+# res = run_correction(m, mcams="delta") # Monte Carlo multiple scattering
+sq = structure_factor(res, m, q_grid=(0.3, 23.5, 0.02))   # Q, S, error
+save_structure_factor("SiO2_RT.soq", sq, ["SiO2 at room temperature"])
+
+r = np.round(np.arange(0.0, 20.0 + 1e-9, 0.01), 10)
+fou = sineFT(sq, r, qmax=23.5, density=m.AtomicDensity, window=1, with_errors=True)
+saveRSCF("SiO2_RT.rscf", fou, ["SiO2 at room temperature, Lorch, Qmax 23.5"])
+\end{lstlisting}
+
+\paragraph{What \code{run_correction} does.} \code{build_state} translates the
+\code{Measurement} into the input of pycorrect: radii (mm $\to$ cm), beam size
+from slits and flags, wavelength, the \emph{effective} atomic density of the
+sample (mass/volume, so the packing fraction is included), temperature,
+fullness, the composition, and the container, vanadium and environment with
+their materials. \textbf{All cross sections come from ToScaNA's isotope
+table}, not from CORRECT's \code{xsect.dat} or its \code{/type} presets;
+container and furnace materials are taken from
+\code{workflows.correction.MATERIALS} (V, TiZr, SiO$_2$, Nb with their
+densities; add others with \code{materials=}). Options of
+\code{run_correction} (passed to \code{build_state}):
+\begin{itemize}
+  \item \code{environment="background"} (default): the environment
+    measurement is subtracted as background from every measurement, as in the
+    CORRECT files written by ToScaNA so far; \code{"furnace"}: it is treated as
+    a furnace with its own attenuation (dimensions and material of
+    \code{<Eshape>}, \code{<Emater>}); \code{"none"}.
+  \item \code{placzek="series"} (default), \code{"diatomic"} or \code{"none"}.
+  \item \code{vanadium_smoothing}: CORRECT's \code{/smoothing} (default 0).
+  \item \code{files=\{...\}}: other data files than those of the
+    sample-description file (they must be on the angle scale).
+  \item \code{mcams="delta"}: multiple scattering of sample and vanadium from
+    MCAMS (angle dependent) instead of CORRECT's Blech \& Averbach series;
+    \code{mcams="all"}: attenuation factors also from MCAMS;
+    \code{mcams_options=dict(n_particles=..., ms_particles=..., n_batches=...)}
+    sets the statistics.
+\end{itemize}
+The result holds $2\theta$, $Q$, $d\sigma/d\Omega$ per atom (barn/sr) with its
+error, every factor used (\code{res.factors}), CORRECT's own result
+(\code{res.pycorrect}) and the MCAMS factors with their errors
+(\code{res.mcams}), so that the two can be compared.
+
+\paragraph{From $d\sigma/d\Omega$ to S(Q).} \code{structure_factor} uses the
+Faber--Ziman definition,
+\[
+  \frac{d\sigma}{d\Omega} = \sum_i c_i\frac{\sigma_i}{4\pi} + \langle b\rangle^2\,[S(Q)-1],
+  \qquad
+  S(Q) = 1 + \frac{d\sigma/d\Omega - \sum_i c_i\sigma_i/4\pi}{\langle b\rangle^2},
+\]
+with the bound cross sections $\sigma_i$ and $\langle b\rangle=\sum_i c_i b_i$
+of ToScaNA's table, and $\sigma_S = \sigma_{d\sigma/d\Omega}/\langle b\rangle^2$.
+With \code{q_grid} the points are rebinned onto a regular grid. The self
+scattering is the static value: inelasticity not removed by the Placzek
+correction remains in S(Q).
+
+\tip{The workflow was checked on a synthetic experiment (Ni powder in a
+vanadium can, vanadium rod, background; data in the \code{.adat} format of
+\code{d4creg}) built with the same physics that CORRECT inverts: S(Q) is
+recovered within $3\times10^{-5}$. On real data, compare \code{res.pycorrect}
+and \code{res.mcams}: the differences show where CORRECT's approximations
+matter.}
+
 \section{pycorrect: CORRECT in Python}
 
 \code{toscana.corrections.pycorrect} is a line-by-line translation of
 CORRECT 2.24 (M.A.~Howe, R.L.~McGreevy, P.~Zetterstr\"om). It reads the same
-command files, so an existing \code{.com} file runs unchanged, and it reads
-the \code{.adat}/\code{.qdat} files written by \code{d4creg}. From the folder
+command files, so an existing \code{.com} file runs unchanged. It also
+reads the \code{.adat} files written by \code{d4creg} (whose header lines
+start with \code{\#}). From the folder
 of the data:
 \begin{lstlisting}
 python -m toscana.corrections.pycorrect run.com     # without a file: interactive prompt
@@ -885,7 +963,7 @@ same reader. To see where each quantity of a file comes from:
 
 \section{Tests}
 
-\code{python tests/run_tests.py} runs the 109 tests in about 80 seconds and
+\code{python tests/run_tests.py} runs the 121 tests in about 80 seconds and
 ends with \code{OK} when everything works. Run it after any change to the
 code. Appendix~\ref{app:tests} explains what each test checks and how to add
 one.

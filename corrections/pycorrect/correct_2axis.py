@@ -341,8 +341,36 @@ def _sample_params(st: CorrectState):
     return p
 
 
-def correct_2axis(st: CorrectState, verbose: bool = True):
+_SAMPLE_FACTORS = ("assch", "acsch", "acch", "ahsch", "ahch", "ahh")
+_FACTOR_KEYS = set(_SAMPLE_FACTORS) | {"avvch", "delta_sa", "delta_va"}
+
+
+def _factor(factors, key, npts, default):
+    """Override `default` with factors[key] (scalar or array of npts values)."""
+    if not factors or key not in factors or factors[key] is None:
+        return default
+    value = np.asarray(factors[key], dtype=float)
+    if value.ndim == 0:
+        return float(value) if key.startswith("delta") else np.full(npts, float(value))
+    if value.shape != (npts,):
+        raise ValueError(f"factors[{key!r}] has shape {value.shape}; expected ({npts},) "
+                         "(one value per point of the data) or a scalar.")
+    return value
+
+
+def correct_2axis(st: CorrectState, verbose: bool = True, factors=None):
     """Run all corrections for every spectrum.  Fortran: CORRECT_2AXIS.
+
+    factors : dict, optional (Python addition, ToScaNA integration 2026-11)
+        Values that replace the ones computed by CORRECT, e.g. Monte Carlo
+        factors from MCAMS (toscana.corrections.bridge): sample-set-up
+        Paalman & Pings factors 'assch','acsch','acch','ahsch','ahch','ahh',
+        vanadium factor 'avvch' (vanadium alone, without /furnace or
+        /container), multiple-scattering ratios 'delta_sa' (sample) and
+        'delta_va' (calibrant). Each is a scalar or an array with one value per
+        data point (the 2theta grid of the files); delta arrays give the angle
+        dependence that CORRECT neglects. Missing keys keep CORRECT's values;
+        with factors=None the calculation is exactly the original one.
 
     Returns a list (one dict per spectrum) with keys:
       'block','theta','q','dcs','err'             final result
@@ -353,6 +381,9 @@ def correct_2axis(st: CorrectState, verbose: bool = True):
       'calib_raw','calib_smooth'                  corrected/smoothed V (or can)
       'sample_abs_corrected'                      I_s after P&P, before norm.
     """
+    unknown = set(factors or ()) - _FACTOR_KEYS
+    if unknown:
+        raise ValueError(f"Unknown keys in factors: {sorted(unknown)}; allowed: {sorted(_FACTOR_KEYS)}")
     p = _sample_params(st)
     f = st.faithful
     fmt = st.data_format
@@ -498,7 +529,11 @@ def correct_2axis(st: CorrectState, verbose: bool = True):
             else:
                 A = absor(st.geometry, st.van_angle, st.va_r, 0.0, st.fu_r1, st.fu_r2,
                           st.beam_width, p["va_tmu"], 0.0, 0.0, theta, col, f)
+                A = dict(A, assch=_factor(factors, "avvch", npts, A["assch"]))
                 cv2, ev2 = cv / A["assch"], ev / A["assch"]
+            if factors and "avvch" in factors and (st.va_furnace or st.va_container):
+                raise ValueError("factors['avvch'] is only supported for a vanadium "
+                                 "measured alone (no /furnace or /container).")
             counts["vanadium"], errors["vanadium"] = cv2, ev2
             # names used by the Fortran listing for the vanadium factors
             res.update(avvch=A["assch"], acchv=A["acch"], acvch=A["acsch"],
@@ -507,6 +542,7 @@ def correct_2axis(st: CorrectState, verbose: bool = True):
         # ---------------- 6b. sample, container, furnace -----------------
         A = absor(st.geometry, st.sample_angle, st.ca_r1, st.ca_r2, st.fu_r1, st.fu_r2,
                   st.beam_width, p["sa_tmu"], p["ca_tmu"], p["fu_tmu"], theta, col, f)
+        A = {k: _factor(factors, k, npts, v) if k in _SAMPLE_FACTORS else v for k, v in A.items()}
         res.update(A)
         zero = np.zeros(npts)
         ch, eh = counts.get("furnace", zero) / A["ahh"], errors.get("furnace", zero) / A["ahh"]
@@ -539,6 +575,7 @@ def correct_2axis(st: CorrectState, verbose: bool = True):
             delta_va = (mscat(st.va_r, st.beam_height, p["va_tmu"], p["va_smu"],
                               faithful=f, verbose=verbose)
                         if st.geometry != "PLATE" else 0.0)
+            delta_va = _factor(factors, "delta_va", npts, delta_va)
             pc_va = pc_va * (1 + delta_va)
             counts["vanadium"] = counts["vanadium"] / (1 - pc_va + delta_va)
             errors["vanadium"] = errors["vanadium"] / (1 - pc_va + delta_va)
@@ -554,6 +591,7 @@ def correct_2axis(st: CorrectState, verbose: bool = True):
                                      p["ca_smu"] * shell, faithful=False, verbose=verbose)
             else:
                 delta_va = 0.0
+            delta_va = _factor(factors, "delta_va", npts, delta_va)
             pc_va = pc_va * (1 + delta_va)
             counts["container"] = counts["container"] / (1 - pc_va + delta_va)
             errors["container"] = errors["container"] / (1 - pc_va + delta_va)
@@ -596,6 +634,7 @@ def correct_2axis(st: CorrectState, verbose: bool = True):
                              faithful=f, verbose=verbose)
         else:
             delta_sa = 0.0
+        delta_sa = _factor(factors, "delta_sa", npts, delta_sa)
         pc_sa = np.zeros(npts)
         if st.placzek_correction != "NONE":
             for fr, sp in zip(p["frac"], st.species):
@@ -642,7 +681,7 @@ def _display(ispec, st, p, r):
         print(f"\n\n\n Spectrum {ispec:2d}\n\n Calibration done with can. Can multiple "
               "scattering and Placzek corrections:\n\n  Angle  Q    m.s.     Placzek")
         for i in rows:
-            print(f" {theta[i]:6.2f}{q[i]:6.2f}{r['delta_va']:9.5f}{r['pc_va'][i]:9.5f}")
+            print(f" {theta[i]:6.2f}{q[i]:6.2f}{np.broadcast_to(r['delta_va'], theta.shape)[i]:9.5f}{r['pc_va'][i]:9.5f}")
     else:
         print(f"\n\n\n Spectrum {ispec:2d}\n\n Vanadium absorption, multiple scattering and "
               f"Placzek corrections:\n\n Linear absorption coefficient x radius ={p['va_tmu'] * st.va_r:5.3f}\n")
@@ -650,11 +689,11 @@ def _display(ispec, st, p, r):
         for i in rows:
             print(f" {theta[i]:6.2f}{q[i]:6.2f}" + "".join(f"{r[k][i]:8.5f}" for k in
                   ("avvch", "acvch", "acchv", "ahvch", "ahchv", "ahhv"))
-                  + f"{r['delta_va']:9.5f}{r['pc_va'][i]:9.5f}")
+                  + f"{np.broadcast_to(r['delta_va'], theta.shape)[i]:9.5f}{r['pc_va'][i]:9.5f}")
     print(f"\n Sample absorption, multiple scattering and Placzek corrections:\n\n"
           f" Linear absorption coefficient x radius ={p['sa_tmu'] * st.ca_r1:5.3f}\n")
     print("  Angle  Q    Assch   Acsch   Acch    Ahsch   Ahch    Ahh      m.s.     Placzek")
     for i in rows:
         print(f" {theta[i]:6.2f}{q[i]:6.2f}" + "".join(f"{r[k][i]:8.5f}" for k in
               ("assch", "acsch", "acch", "ahsch", "ahch", "ahh"))
-              + f"{r['delta_sa']:9.5f}{r['pc_sa'][i]:9.5f}")
+              + f"{np.broadcast_to(r['delta_sa'], theta.shape)[i]:9.5f}{r['pc_sa'][i]:9.5f}")
