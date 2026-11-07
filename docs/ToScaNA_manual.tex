@@ -513,6 +513,22 @@ the isotope names of the nuclear-data table for isotopic substitution
 \code{Measurement}, which also reads the five data files (3 columns:
 $x$, $y$, error).
 
+\paragraph{Extra layers.} \newbeh{} Set-ups with more cylinders than sample,
+container and environment (inner wall of an annular can, a second heat
+shield, \ldots) are described with optional lines
+\begin{lstlisting}[language=toscanapar]
+<Lay01> shield environment Nb 30.0 30.1 100.0 # name role material id od height (mm)
+<Lay02> wall2 container V 7.0 7.2 60.0 # second container wall
+\end{lstlisting}
+The role is \code{sample}, \code{container} or \code{environment}: the
+layer belongs to that body in the corrections. The material is a name of
+\code{corrections.setup.MATERIALS} (V, TiZr, SiO2, Nb, Al, Cu) or
+\code{formula@density}, e.g.\ \code{Al2O3@3.95} (g/cm$^3$). They are
+available as \code{m.extra_layers}; a line with fewer than six values raises
+\code{ValueError}. A non-zero inner diameter in \code{<Sshape>} gives a
+hollow sample; the inner diameter of \code{<Cshape>} may be larger than the
+sample (gap).
+
 \section{The Measurement object}
 
 \begin{lstlisting}[language=Python]
@@ -573,8 +589,9 @@ An unknown name raises \code{ValueError}.
 
 \section{Input for CORRECT}
 
-With pycorrect inside ToScaNA no command file is needed: \code{run_correction}
-builds the input from the \code{Measurement} (Section~\ref{sec:workflow}). For
+With the corrections inside ToScaNA no command file is needed:
+\code{run_correction} builds everything from the \code{Measurement}
+(Section~\ref{sec:workflow}). For
 the Fortran CORRECT, two functions write command files:
 \begin{itemize}
   \item \code{generate_com(template, name, rsample, density, ...)} fills the
@@ -595,7 +612,7 @@ the Fortran CORRECT, two functions write command files:
 \end{itemize}
 
 % =====================================================================
-\chapter{Corrections: pycorrect and MCAMS}\label{ch:corrections}
+\chapter{Corrections: MCAMS and pycorrect}\label{ch:corrections}
 % =====================================================================
 
 \section{The complete workflow}\label{sec:workflow}
@@ -603,6 +620,21 @@ the Fortran CORRECT, two functions write command files:
 \code{toscana.workflows.correction} connects the regrouped data to S(Q):
 the experiment is described once, in the sample-description file
 (Chapter~\ref{ch:sample}), and no CORRECT command file has to be written.
+Two methods are available:
+\begin{itemize}
+  \item \code{method="mcams"} (default) \newbeh{}: ToScaNA's own Paalman \&
+    Pings subtraction with factors computed by MCAMS. Any number of
+    concentric cylinders (hollow sample, annular container, container with a
+    gap, several environment layers), partial filling, an absorber
+    measurement, angle-dependent multiple scattering of every configuration.
+  \item \code{method="pycorrect"}: CORRECT~2.24 itself, for the set-ups it can
+    describe (solid sample in contact with one container wall, one furnace
+    layer, solid vanadium); \code{ValueError} otherwise.
+\end{itemize}
+Data files may be \code{.adat} (angle) or \code{.qdat} ($Q$, converted to
+$2\theta$ with the wavelength) in both methods; the scale is read from the
+\code{X caption} header line or, without it, from the extension
+(\code{read_regrouped}).
 \begin{lstlisting}[language=Python]
 import numpy as np
 from toscana.dataio.running_params import getRunningParams
@@ -612,9 +644,11 @@ from toscana.workflows.correction import (run_correction, structure_factor,
 from toscana.numerics.fourier import sineFT
 from toscana.dataio.saving import saveRSCF
 
-m = Measurement(getRunningParams("SiO2_RT.par"))   # files: the .adat of d4creg
-res = run_correction(m)                  # pycorrect, CORRECT's factors
-# res = run_correction(m, mcams="delta") # Monte Carlo multiple scattering
+m = Measurement(getRunningParams("SiO2_RT.par"))   # .adat or .qdat of d4creg
+res = run_correction(m)                  # MCAMS factors, ToScaNA's chain
+# res = run_correction(m, method="pycorrect")   # CORRECT 2.24
+res.save_factors("SiO2_RT", scale="q")   # A_b,C, delta_C, T_C vs Q (or "angle")
+res.save_intensities("SiO2_RT_I.dat", scale="q")  # I_s, I_c, I_h, I_v, B_C, MS_C
 sq = structure_factor(res, m, q_grid=(0.3, 23.5, 0.02))   # Q, S, error
 save_structure_factor("SiO2_RT.soq", sq, ["SiO2 at room temperature"])
 
@@ -623,37 +657,115 @@ fou = sineFT(sq, r, qmax=23.5, density=m.AtomicDensity, window=1, with_errors=Tr
 saveRSCF("SiO2_RT.rscf", fou, ["SiO2 at room temperature, Lorch, Qmax 23.5"])
 \end{lstlisting}
 
-\paragraph{What \code{run_correction} does.} \code{build_state} translates the
-\code{Measurement} into the input of pycorrect: radii (mm $\to$ cm), beam size
-from slits and flags, wavelength, the \emph{effective} atomic density of the
-sample (mass/volume, so the packing fraction is included), temperature,
-fullness, the composition, and the container, vanadium and environment with
-their materials. \textbf{All cross sections come from ToScaNA's isotope
-table}, not from CORRECT's \code{xsect.dat} or its \code{/type} presets;
-container and furnace materials are taken from
-\code{workflows.correction.MATERIALS} (V, TiZr, SiO$_2$, Nb with their
-densities; add others with \code{materials=}). Options of
-\code{run_correction} (passed to \code{build_state}):
+\paragraph{The set-up.} \code{corrections.setup.setups_from_measurement}
+turns the \code{Measurement} into two \code{CylinderSetup} objects, one for
+the sample measurements and one for the vanadium. Each layer is a cylinder or
+an annulus (inner and outer diameter, height, fullness, material) belonging
+to a \emph{body}: \code{s} sample, \code{c} container, \code{h} environment,
+\code{v} vanadium. The layers come from \code{<Sshape>}, \code{<Cshape>},
+\code{<Eshape>} (only with \code{environment="layer"}), \code{<Nshape>} and the
+\code{<LayNN>} lines. \textbf{All cross sections come from ToScaNA's isotope
+table}; the sample uses its \emph{effective} atomic density (mass/volume, so
+the packing fraction is included). The \emph{configurations} are the
+measurements, from the outermost body inwards: e.g.\ \code{"h"} (environment
+alone), \code{"ch"} (empty can in the environment), \code{"sch"} (sample),
+and \code{"v"} or \code{"vh"} for the vanadium.
+
+\paragraph{The factors.} \code{corrections.factors.compute_factors} computes,
+for every configuration $C$ and every body $b$ in it, on the angles of the
+data:
+\begin{itemize}
+  \item the Paalman \& Pings factor $A_{b,C}(2\theta)$ (MCAMS direct
+    integration over the beam and the scattering points, then a cubic
+    spline from a grid of step \code{step_deg}); for a body with several
+    layers, the average weighted by the scattering power of the layers;
+  \item the multiple-scattering ratio $\delta_C(2\theta)$: total multiple over
+    total single scattering of the configuration, the bodies taken as
+    isotropic scatterers (MCAMS Monte Carlo, fitted by a polynomial);
+  \item the transmission $T_C$ (exact, analytic average of
+    $\exp(-\sum\mu\,\ell)$ over the beam);
+  \item $n\langle L\rangle_b$ (atoms per unit beam area) and
+    $P_b=\sum\rho\,\sigma_s\langle L\rangle$ (scattering power).
+\end{itemize}
+They are returned as a \code{FactorSet}: \code{res.factors} (sample set-up)
+and \code{res.vanadium_factors}. Keys: \code{"A_s,sch"}, \code{"A_c,sch"},
+\code{"A_h,sch"}, \code{"A_c,ch"}, \code{"A_h,ch"}, \code{"A_h,h"},
+\code{"A_v,v"}, \ldots{} in \code{.A}; \code{"delta_sch"}, \ldots{} in
+\code{.delta}; \code{"T_sch"}, \ldots{} in \code{.T}; statistical errors in
+\code{.A_err}, \code{.delta_err}. \code{.table("q")} or \code{.table("angle")}
+gives the arrays on either scale, \code{.save(file, scale=...)} writes them
+with a header (transmissions, $n\langle L\rangle$, $P_b$), and
+\code{load_factors(file)} reads them back. With the defaults
+(\code{n_points=100\_000}, \code{ms_particles=2\_000\_000}) a three-configuration
+set-up takes about one minute; \code{factor_options=dict(...)} changes them.
+Precomputed factors (from an earlier run, same angles) are given with
+\code{factors=} and \code{vanadium_factors=}.
+
+\paragraph{The subtraction.} With $M_C$ the measurement of configuration
+$C$:
+\begin{enumerate}
+  \item Background. With an absorber measurement (\code{<Amater>} not
+    \code{None}), $B_C = T_C\,I_\text{empty} + (1-T_C)\,I_\text{absorber}$;
+    otherwise $B_C=I_\text{empty}$. $I_\text{empty}$ is the environment
+    measurement with \code{environment="background"} (default), or
+    \code{files["empty"]} with \code{environment="layer"}.
+  \item Vanadium: $I_v = (M_v - B_v)/(1+\delta_v)/A_{v,v}$ (with an
+    environment, its contribution is subtracted first as below), divided by
+    $1-P_v$ (Placzek) and smoothed (\code{vanadium_smoothing}). It gives the
+    count rate per unit isotropic cross section,
+    $K(2\theta) = I_v / (P_v/4\pi)$.
+  \item Multiple scattering of each configuration, as in CORRECT (subtracted,
+    not divided, since $\delta$ refers to isotropic scatterers):
+    $MS_C = \delta_C\,K\sum_{b\in C} A_{b,C}\,P_b/4\pi$.
+  \item Nested Paalman \& Pings subtraction from the outermost body inwards:
+    \begin{align*}
+      I_h &= (M_h-B_h-MS_h)/A_{h,h},\\
+      I_c &= (M_{ch}-B_{ch}-MS_{ch}-A_{h,ch}I_h)/A_{c,ch},\\
+      I_s &= (M_{sch}-B_{sch}-MS_{sch}-A_{c,sch}I_c-A_{h,sch}I_h)/A_{s,sch}.
+    \end{align*}
+  \item Normalisation and Placzek correction of the sample:
+    $d\sigma/d\Omega = I_s/(K\,n\langle L\rangle_s) + \sum_i c_i\sigma_i P_i/4\pi$.
+\end{enumerate}
+Errors of the measurements are propagated in quadrature through every step.
+\code{res.intensities} holds $I_s$, $I_c$, $I_h$, $I_v$ (with errors),
+the smoothed vanadium and $MS_C$; \code{res.backgrounds} the $B_C$; both on the
+data grid (\code{res.theta}, \code{res.q}), so that the subtraction can be
+redone or modified in a notebook.
+
+\paragraph{Options of \code{run_correction}.}
 \begin{itemize}
   \item \code{environment="background"} (default): the environment
-    measurement is subtracted as background from every measurement, as in the
-    CORRECT files written by ToScaNA so far; \code{"furnace"}: it is treated as
-    a furnace with its own attenuation (dimensions and material of
-    \code{<Eshape>}, \code{<Emater>}); \code{"none"}.
+    measurement is the background of every measurement, as in the CORRECT
+    files written by ToScaNA so far; \code{"layer"} (or \code{"furnace"}): the
+    environment and the environment \code{<LayNN>} layers are a body $h$,
+    corrected for attenuation, and \code{files["empty"]} (empty instrument) is
+    the background; \code{"none"}.
+  \item \code{vanadium_in_environment=True}: the vanadium was measured inside
+    the environment (configurations \code{"h"}, \code{"vh"}).
   \item \code{placzek="series"} (default), \code{"diatomic"} or \code{"none"}.
-  \item \code{vanadium_smoothing}: CORRECT's \code{/smoothing} (default 0).
-  \item \code{files=\{...\}}: other data files than those of the
-    sample-description file (they must be on the angle scale).
-  \item \code{mcams="delta"}: multiple scattering of sample and vanadium from
-    MCAMS (angle dependent) instead of CORRECT's Blech \& Averbach series;
-    \code{mcams="all"}: attenuation factors also from MCAMS;
-    \code{mcams_options=dict(n_particles=..., ms_particles=..., n_batches=...)}
-    sets the statistics.
+  \item \code{vanadium_smoothing}: number of polynomial coefficients (0: none;
+    negative: CORRECT's Savitzky--Golay smoothing).
+  \item \code{files=\{...\}}: data files instead of those of the
+    sample-description file; keys \code{sample}, \code{container},
+    \code{vanadium}, \code{environment}, \code{empty}, \code{absorber}. Files on
+    another angle grid than the sample are interpolated onto it (noted in
+    \code{res.notes}).
+  \item \code{materials=\{...\}}: extra container or environment materials.
+  \item \code{method="pycorrect"}, optionally with \code{mcams="delta"} (MCAMS
+    multiple scattering) or \code{"all"} (all factors from MCAMS,
+    \code{mcams_options} for the statistics): the CORRECT chain, whose factors
+    are also returned as a \code{FactorSet} (keys \code{A_s,sc}, \ldots);
+    \code{res.pycorrect} is CORRECT's full result dictionary.
 \end{itemize}
-The result holds $2\theta$, $Q$, $d\sigma/d\Omega$ per atom (barn/sr) with its
-error, every factor used (\code{res.factors}), CORRECT's own result
-(\code{res.pycorrect}) and the MCAMS factors with their errors
-(\code{res.mcams}), so that the two can be compared.
+
+\paragraph{Consistency of the two methods.} Given CORRECT's own factors (its
+$\delta$ converted to the definition above), ToScaNA's chain reproduces
+CORRECT's $d\sigma/d\Omega$ to $10^{-10}$; the differences between the methods
+therefore come only from the factors. For the synthetic Ni example the MCAMS
+and CORRECT attenuation factors agree within 0.1--0.4\,\%, while the
+multiple scattering differs (CORRECT's series underestimates the higher
+orders and ignores the container), which changes $d\sigma/d\Omega$ by a few
+per cent.
 
 \paragraph{From $d\sigma/d\Omega$ to S(Q).} \code{structure_factor} uses the
 Faber--Ziman definition,
@@ -668,12 +780,13 @@ With \code{q_grid} the points are rebinned onto a regular grid. The self
 scattering is the static value: inelasticity not removed by the Placzek
 correction remains in S(Q).
 
-\tip{The workflow was checked on a synthetic experiment (Ni powder in a
-vanadium can, vanadium rod, background; data in the \code{.adat} format of
-\code{d4creg}) built with the same physics that CORRECT inverts: S(Q) is
-recovered within $3\times10^{-5}$. On real data, compare \code{res.pycorrect}
-and \code{res.mcams}: the differences show where CORRECT's approximations
-matter.}
+\tip{Both methods were checked on synthetic experiments. pycorrect: Ni powder
+in a vanadium can, built with the physics CORRECT inverts, S(Q) recovered
+within $3\times10^{-5}$. MCAMS: a hollow Ni sample in a vanadium can with a
+gap, a niobium furnace and a heat shield, an absorber, the sample given as
+\code{.qdat}; $d\sigma/d\Omega$ and every intermediate intensity are recovered
+to $10^{-7}$. To compare the methods on real data, run both and compare
+\code{res.factors} and \code{res.dcs}.}
 
 \section{pycorrect: CORRECT in Python}
 

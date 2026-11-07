@@ -81,6 +81,13 @@ def getRunningParams(parfile: str) -> dict[str, Any]:
     Data files
         ``<CoFile>`` container, ``<AbFile>`` absorber, ``<NoFile>`` vanadium
         (normaliser), ``<EnFile>`` environment, ``<SaFile>`` sample.
+    Extra layers (optional)
+        ``<LayNN> name role material inner_d outer_d height``: one more
+        concentric cylinder (role sample, container or environment; material
+        a name of ``toscana.corrections.setup.MATERIALS`` or
+        ``formula@density``; mm), e.g. the inner wall of an annular can or a
+        second heat shield. Stored as ``(label, name, role, material,
+        inner_d, outer_d, height)`` (strings).
 
     Parameters
     ----------
@@ -390,6 +397,18 @@ def getRunningParams(parfile: str) -> dict[str, Any]:
 
             if line[0] == "<SaFile>":
                 inputPar[line[0]] = ("Sample file:         ", line[1])
+
+            if line[0][0:4] == "<Lay":
+                # Extra concentric layer (integration of MCAMS, 2026-11):
+                # <LayNN> name role material inner_diam outer_diam height
+                # role: sample, container or environment; material: a name of
+                # toscana.corrections.setup.MATERIALS or "formula@density".
+                if len(line) < 7:
+                    raise ValueError(
+                        f"{line[0]} needs: name role material inner_diam outer_diam height "
+                        f"(line {i + 1} of {parfile})"
+                    )
+                inputPar[line[0]] = ("Layer " + line[0][4:-1] + ":", *line[1:7])
         else:
             print("Input error in line: ", i + 1, " file: ", parfile)
             raise ValueError(f"Input error in line {i + 1} file {parfile}")

@@ -1,4 +1,4 @@
-"""Correction workflow: Measurement -> pycorrect (-> MCAMS) -> S(Q)."""
+"""Correction workflow, method="pycorrect": Measurement -> CORRECT (-> MCAMS) -> S(Q)."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ class TestEndToEnd(unittest.TestCase):
         cls._tmp = in_tempdir()
         cls.folder = cls._tmp.__enter__()
         cls.m, cls.truth = _measurement(cls.folder)
-        cls.result = run_correction(cls.m, placzek="none")
+        cls.result = run_correction(cls.m, method="pycorrect", placzek="none")
         cls.sq = structure_factor(cls.result, cls.m)
 
     @classmethod
@@ -50,9 +50,17 @@ class TestEndToEnd(unittest.TestCase):
         self.assertAlmostEqual(float(self.sq[self.sq[:, 0] > 15, 1].mean()), 1.0, delta=1e-3)
 
     def test_correct_factors_match_the_forward_model(self) -> None:
-        self.assertAlmostEqual(self.result.factors["delta_sa"], self.truth["delta_sa"], places=6)
-        self.assertAlmostEqual(self.result.factors["delta_va"], self.truth["delta_va"], places=6)
-        self.assertEqual(self.result.source, "pycorrect")
+        self.assertAlmostEqual(self.result.pycorrect["delta_sa"], self.truth["delta_sa"], places=6)
+        self.assertAlmostEqual(self.result.pycorrect["delta_va"], self.truth["delta_va"], places=6)
+        self.assertEqual(self.result.method, "pycorrect")
+        # the same factors as a FactorSet (keys of the general chain)
+        fs = self.result.factors
+        self.assertEqual(fs.configurations, ["c", "sc"])
+        np.testing.assert_array_equal(fs.A["A_s,sc"], self.result.pycorrect["assch"])
+        np.testing.assert_array_equal(fs.A["A_c,c"], self.result.pycorrect["acch"])
+        self.assertAlmostEqual(float(fs.delta["delta_sc"][0]), self.truth["delta_sa"], places=6)
+        np.testing.assert_array_equal(self.result.vanadium_factors.A["A_v,v"],
+                                      self.result.pycorrect["avvch"])
 
     def test_errors_propagated(self) -> None:
         # sigma_S = sigma(dsigma/dOmega) / <b>^2, point by point (sorted by Q)
@@ -93,19 +101,21 @@ class TestMcams(unittest.TestCase):
         with in_tempdir() as folder:
             m, _truth = _measurement(folder)
             opts = dict(n_particles=20000, n_batches=3, ms_particles=8000)
-            ref = run_correction(m, placzek="none")
-            r = run_correction(m, placzek="none", mcams="delta", mcams_options=opts)
-            r_all = run_correction(m, placzek="none", mcams="all", mcams_options=opts)
-        self.assertEqual(r.source, "mcams-delta")
-        self.assertEqual(np.shape(r.factors["delta_sa"]), r.theta.shape)
-        # Known result (docs/validation): CORRECT's series for higher orders is too low
-        self.assertGreater(float(np.mean(r.factors["delta_sa"])), ref.factors["delta_sa"])
-        # attenuation unchanged with "delta", replaced with "all" (within MC noise ~1 %)
-        np.testing.assert_array_equal(r.factors["assch"], ref.factors["assch"])
-        self.assertFalse(np.array_equal(r_all.factors["assch"], ref.factors["assch"]))
-        np.testing.assert_allclose(r_all.factors["assch"], ref.factors["assch"], rtol=0.03)
+            ref = run_correction(m, method="pycorrect", placzek="none").pycorrect
+            r = run_correction(m, method="pycorrect", placzek="none", mcams="delta",
+                               mcams_options=opts)
+            r_all = run_correction(m, method="pycorrect", placzek="none", mcams="all",
+                                   mcams_options=opts).pycorrect
+        self.assertEqual(r.method, "pycorrect+mcams-delta")
         self.assertIsNotNone(r.mcams)
-        self.assertIn("delta_sa_err", r.mcams)
+        r = r.pycorrect
+        self.assertEqual(np.shape(r["delta_sa"]), np.shape(r["theta"]))
+        # Known result (docs/validation): CORRECT's series for higher orders is too low
+        self.assertGreater(float(np.mean(r["delta_sa"])), ref["delta_sa"])
+        # attenuation unchanged with "delta", replaced with "all" (within MC noise ~1 %)
+        np.testing.assert_array_equal(r["assch"], ref["assch"])
+        self.assertFalse(np.array_equal(r_all["assch"], ref["assch"]))
+        np.testing.assert_allclose(r_all["assch"], ref["assch"], rtol=0.03)
 
 
 class TestBuildState(unittest.TestCase):
@@ -154,7 +164,11 @@ class TestBuildState(unittest.TestCase):
             with self.assertRaises(ValueError):
                 build_state(m, placzek="maybe")
             with self.assertRaises(ValueError):
-                run_correction(m, mcams="sometimes")
+                run_correction(m, method="pycorrect", mcams="sometimes")
+            with self.assertRaises(ValueError):
+                run_correction(m, mcams="delta")          # only for method="pycorrect"
+            with self.assertRaises(ValueError):
+                run_correction(m, method="magic")
             m.InnerDiam = 2.0
             with self.assertRaises(ValueError):
                 build_state(m)
