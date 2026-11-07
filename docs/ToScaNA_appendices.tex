@@ -151,7 +151,8 @@ Commit & Content \\
 \tn{da86b8b} & D4Numor, MCAMS 2.7, pycorrect and the validation study, as received. \\
 \tn{91ee4bc} & Their integration into the package (Section~\ref{sec:integration}). \\
 \tn{26947d6} & Correction workflow: Measurement $\to$ pycorrect (MCAMS) $\to$ S(Q). \\
-(next) & MCAMS default: general Paalman \& Pings chain, \code{<LayNN>} layers, absorber, \code{.qdat} input, factor files. \\
+\tn{f69206a} & MCAMS default: general Paalman \& Pings chain, \code{<LayNN>} layers, absorber, \code{.qdat} input, factor files. \\
+(next) & Command line \code{correct_cli}; vanadium error through $K$; the \code{example} folder. \\
 \bottomrule
 \end{longtable}
 
@@ -1035,6 +1036,7 @@ File & Role \\
 \code{test_integration.py} & NeXus reading in both formats, d4numor, pycorrect command line, MCAMS nuclear data, bridge. \\
 \code{test_workflow_correction.py}, \code{synthetic_d4.py} & The pycorrect method on a synthetic experiment with known S(Q) (\code{synthetic_d4.make_experiment}). \\
 \code{test_correction_mcams.py} & The MCAMS method: hollow sample, can with a gap, furnace and shield, absorber, \code{.qdat} sample, built forward with MCAMS factors and recovered to $10^{-7}$; identity with CORRECT given CORRECT's factors; \code{<LayNN>} parsing; transmissions; factor files on both scales; pycorrect's limits. \\
+\code{test_example.py} & The \code{example} folder: truth recovered within the errors (rms $\approx1\sigma$) from \code{.adat} and \code{.qdat}; command line outputs; its CORRECT command file equals \code{method="pycorrect"}. \\
 \code{test_pycorrect.py} & pycorrect's own tests (Paalman \& Pings vs brute force, multiple-scattering limits, parser, round trip of the whole correction chain, flat plate), with a \code{unittest} wrapper. \\
 \code{mcams_checks.py}, \code{test_mcams.py} & MCAMS's own self-test (paths vs brute force, exact interaction rates, direct method vs Monte Carlo, all geometries), run unchanged in a separate process by the wrapper. \\
 \bottomrule
@@ -2051,6 +2053,12 @@ $\to$ pycorrect \code{CorrectState}; \code{ValueError} for set-ups CORRECT
 cannot describe.
 \code{structure_factor(result, m, q_grid=None)} $\to$ array (Q, S, error).
 \code{save_structure_factor(filename, sq, heading)}.
+
+\tssub{\texttt{workflows.correct\_cli}}
+\code{main(argv)}: command line of \code{run_correction}
+(\code{python -m toscana.workflows.correct_cli SAMPLE.par [options]}); writes
+factor, intensity, $d\sigma/d\Omega$ and S(Q) files; returns the
+\code{CorrectionResult}.
 
 \tssub{\texttt{corrections.setup}}
 \code{MATERIALS} (V 6.11, TiZr, SiO$_2$, Nb, Al, Cu; g/cm$^3$),

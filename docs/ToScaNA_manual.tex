@@ -182,11 +182,11 @@ confused with other modules of the same name.}
 \section{Checking the installation}
 
 Run the test suite (Appendix~\ref{app:tests}); it needs no installation
-and takes about 35 seconds:
+and takes about three minutes:
 \begin{lstlisting}
 python /Users/cuello/AI-lab/ToScaNA-pilot/tests/run_tests.py
 ...
-Ran 121 tests in 80 s
+Ran 136 tests in 180 s
 OK
 \end{lstlisting}
 
@@ -726,7 +726,11 @@ $C$:
   \item Normalisation and Placzek correction of the sample:
     $d\sigma/d\Omega = I_s/(K\,n\langle L\rangle_s) + \sum_i c_i\sigma_i P_i/4\pi$.
 \end{enumerate}
-Errors of the measurements are propagated in quadrature through every step.
+Errors of the measurements are propagated in quadrature through every step;
+without vanadium smoothing (default) the error of the vanadium enters through
+$K$, which scales the sample intensity \emph{before} the multiple-scattering
+subtraction (checked by a Monte Carlo over noise realisations: the scatter of
+the results equals the propagated errors).
 \code{res.intensities} holds $I_s$, $I_c$, $I_h$, $I_v$ (with errors),
 the smoothed vanadium and $MS_C$; \code{res.backgrounds} the $B_C$; both on the
 data grid (\code{res.theta}, \code{res.q}), so that the subtraction can be
@@ -787,6 +791,48 @@ gap, a niobium furnace and a heat shield, an absorber, the sample given as
 \code{.qdat}; $d\sigma/d\Omega$ and every intermediate intensity are recovered
 to $10^{-7}$. To compare the methods on real data, run both and compare
 \code{res.factors} and \code{res.dcs}.}
+
+\section{Command line}\label{sec:correct-cli}
+
+The same correction without Python code \newbeh{}:
+\begin{lstlisting}
+python -m toscana.workflows.correct_cli SAMPLE.par               # MCAMS, files of the .par
+python -m toscana.workflows.correct_cli SAMPLE.par --input qdat --scale q --outdir results
+python -m toscana.workflows.correct_cli SAMPLE.par --method pycorrect
+python -m toscana.workflows.correct_cli --help
+\end{lstlisting}
+{\sloppy Options: \code{--method mcams|pycorrect}, \code{--input par|adat|qdat} (the
+files of the \code{.par} or the same names with that extension),
+\code{--scale q|angle|both}, \code{--outdir}, \code{--environment},
+\code{--vanadium-in-environment}, \code{--no-absorber}, \code{--placzek},
+\code{--vanadium-smoothing}, \code{--n-points}, \code{--ms-particles},
+\code{--seed}, \code{--mcams delta|all} (pycorrect with MCAMS factors),
+\code{--qgrid}. It writes the factor files (sample and vanadium set-ups), the
+intensities and backgrounds on the requested scales, $d\sigma/d\Omega$
+(\code{<title>_<method>_dcs.dat}) and S(Q) (\code{.soq}). From Python,
+\code{correct_cli.main([...])} does the same and returns the result.\par}
+
+\section{A complete example}\label{sec:example}
+
+The folder \code{example} contains a synthetic D4 experiment with all the
+steps \newbeh{}: Ni powder in a vanadium can inside a furnace, a vanadium rod
+and a $^{10}$B absorber, i.e.\ the five measurements \code{I_SCE},
+\code{I_CE}, \code{I_E}, \code{I_VE}, \code{I_ACE}, each as \code{.adat} and
+\code{.qdat}, with the true values. The notebook
+\code{D4_corrections_example.ipynb} computes the MCAMS factors, makes the
+subtraction step by step (and checks it against \code{run_correction}),
+saves $I_S$, $I_V$, the factors, $d\sigma/d\Omega$ and S(Q) on both scales,
+and compares with pycorrect. \code{run_example.py} is the same as a script;
+\code{correct.py} and \code{run_pycorrect.py} are the command lines of the
+previous section and of pycorrect; \code{data/Ni_powder.com} is the CORRECT
+command file of the same experiment. \code{example/README.md} lists all the
+commands. On these data the MCAMS correction recovers the truth with an rms
+deviation of $1.0\sigma$.
+
+\warn{If another package called \code{toscana} is installed in the Python
+environment (e.g.\ an older version), \code{python -m toscana...} uses that
+one. The example's \code{toscana_path.py} (imported first by its scripts and
+notebook) always loads the ToScaNA of the parent folder.}
 
 \section{pycorrect: CORRECT in Python}
 

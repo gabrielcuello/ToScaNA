@@ -156,7 +156,9 @@ class CorrectionResult:
     theta, q : ndarray
         2θ (deg) and Q (1/Å) of the data points.
     dcs, err : ndarray
-        Corrected differential cross section per atom and its error, barn/sr.
+        Corrected differential cross section per atom and its error, barn/sr
+        (method "mcams": errors of all measurements; the vanadium's only when
+        it is not smoothed).
     wavelength : float
         Å.
     method : str
@@ -453,6 +455,12 @@ def run_correction(
     i_s, i_s_err = I["s"]
     dcs = i_s / k / fs.atoms_per_area["s"]
     err = i_s_err / k / fs.atoms_per_area["s"]
+    if vanadium_smoothing == 0:
+        # Unsmoothed vanadium: the error of K enters point by point. Since
+        # dσ/dΩ = Y/(A_s K n<L>) - (MS terms independent of K), it scales the
+        # intensity BEFORE the multiple-scattering subtraction, Y/A_s.
+        y_s = _chain(fs, sample_meas, sample_bkg, {c: 0.0 for c in fs.configurations})["s"][0]
+        err = np.hypot(err, y_s / k / fs.atoms_per_area["s"] * iv_err / np.abs(iv))
     comp = sample_setup.layers_of("s")[0].composition
     for symbol, c in comp.items():
         e = Element(symbol)
