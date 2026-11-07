@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pycorrect"
+version = "2.24.0"
+description = "Python translation of CORRECT 2.24 (Paalman-Pings, Blech-Averbach and Placzek corrections for neutron diffraction)"
+requires-python = ">=3.9"
+dependencies = ["numpy", "scipy"]
+
+[project.scripts]
+pycorrect = "pycorrect.correct:main"
+
+[tool.setuptools]
+packages = ["pycorrect"]
+
+[tool.setuptools.package-data]
+pycorrect = ["*.dat"]

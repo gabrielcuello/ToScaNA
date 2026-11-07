@@ -1,0 +1,105 @@
+% ======================================================================
+% preamble.tex - packages, macros and styles of the MCAMS manual
+% (same visual style as the pycorrect manual)
+% ======================================================================
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{mathpazo}
+\renewcommand{\ttdefault}{txtt}   % txfonts typewriter: narrower than Courier
+\usepackage{microtype}
+% no ligatures in typewriter text: "--fullness" must not become an en-dash
+\DisableLigatures[-]{encoding = T1, family = tt*}
+\usepackage[english]{babel}
+\usepackage[a4paper,margin=2.5cm,headheight=14pt]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs,tabularx,longtable,array}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[most]{tcolorbox}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
+\usepackage[colorlinks=true,linkcolor=accent,urlcolor=accent,citecolor=accent]{hyperref}
+
+\graphicspath{{figures/}}
+\setcounter{tocdepth}{1}
+\emergencystretch=2em
+
+% ---------------------------------------------------------------- colours
+\definecolor{accent}{HTML}{2A78D6}
+\definecolor{accent2}{HTML}{EB6834}
+\definecolor{accent3}{HTML}{1BAF7A}
+\definecolor{ink2}{HTML}{52514E}
+\definecolor{codebg}{HTML}{F6F6F4}
+\definecolor{outbg}{HTML}{EEF4FC}
+\definecolor{noteback}{HTML}{EEF4FC}
+\definecolor{warnback}{HTML}{FDF0EA}
+
+% ---------------------------------------------------------------- headings
+\titleformat{\chapter}[display]{\normalfont\bfseries\color{accent}}
+  {\large\scshape \chaptertitlename\ \thechapter}{4pt}{\Huge}
+\titlespacing*{\chapter}{0pt}{-20pt}{24pt}
+\titleformat{\section}{\normalfont\Large\bfseries\color{accent}}{\thesection}{0.8em}{}
+\titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection}{0.8em}{}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{ink2}\textsc{mcams} user manual}
+\fancyhead[R]{\small\color{ink2}\nouppercase{\leftmark}}
+\fancyfoot[C]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ---------------------------------------------------------------- code
+% Python code, program output and shell commands. The chapters use
+%   \begin{lstlisting} ... \end{lstlisting}            (Python, default)
+%   \begin{lstlisting}[style=shell] ... \end{lstlisting}
+%   \pyexample{name}  (examples/name.py followed by examples/output/name.txt)
+\lstdefinestyle{base}{
+  basicstyle=\ttfamily\small, backgroundcolor=\color{codebg},
+  frame=single, rulecolor=\color{codebg}, framesep=4pt, xleftmargin=4pt,
+  xrightmargin=4pt, breaklines=true, columns=fullflexible, keepspaces=true,
+  showstringspaces=false, aboveskip=8pt, belowskip=8pt,
+  commentstyle=\color{ink2}\itshape, keywordstyle=\color{accent}\bfseries,
+  stringstyle=\color{accent2}, upquote=true}
+\lstdefinestyle{pycode}{style=base, language=Python}
+\lstdefinestyle{shell}{style=base, language={}}
+\lstdefinestyle{output}{style=base, language={}, basicstyle=\ttfamily\scriptsize,
+  backgroundcolor=\color{outbg}, rulecolor=\color{outbg}, aboveskip=0pt}
+\lstset{style=pycode}
+
+\newcommand{\pyexample}[1]{%
+  \lstinputlisting[style=pycode]{examples/#1.py}%
+  \lstinputlisting[style=output]{examples/output/#1.txt}}
+
+% \code{...}: typewriter text for names, calls and short pieces of code.
+% Spaces, underscores and other special characters are allowed inside; braces
+% must be balanced. Do not use it in titles or captions (use \texttt there).
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\file}[1]{\texttt{#1}}
+
+% ---------------------------------------------------------------- boxes
+\newtcolorbox{note}[1][Note]{colback=noteback,colframe=accent,boxrule=0pt,
+  leftrule=3pt,arc=0pt,fonttitle=\bfseries,coltitle=accent,colbacktitle=noteback,
+  title=#1,attach title to upper={\ \ },before skip=8pt,after skip=8pt}
+\newtcolorbox{warn}[1][Caution]{colback=warnback,colframe=accent2,boxrule=0pt,
+  leftrule=3pt,arc=0pt,fonttitle=\bfseries,coltitle=accent2,colbacktitle=warnback,
+  title=#1,attach title to upper={\ \ },before skip=8pt,after skip=8pt}
+\newtcolorbox{fnbox}[1]{colback=white,colframe=accent,boxrule=0.6pt,arc=2pt,
+  fonttitle=\ttfamily\bfseries,coltitle=white,title={#1},before skip=10pt,after skip=6pt}
+
+\setlist{itemsep=2pt,topsep=4pt}
+\captionsetup{font=small,labelfont={bf,color=accent}}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+
+% ---------------------------------------------------------------- macros
+\newcommand{\mcams}{\textsc{mcams}}
+\newcommand{\twotheta}{2\theta}
+\newcommand{\mumm}{\mu\ (\mathrm{mm}^{-1})}
+\newcommand{\deriv}[1]{\mathrm{d}#1}
+\DeclareMathOperator{\e}{e}

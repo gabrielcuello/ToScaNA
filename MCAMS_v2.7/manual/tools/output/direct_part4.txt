@@ -1,0 +1,15 @@
+==============================================================================
+4. SINGLE-SCATTERING REFERENCE for simulate_scattering_orders
+   Ni in V can, beam 15 x 20 mm, azimuth window +-5 deg, 5-degree bins, 1.6e7 particles
+==============================================================================
+   Monte Carlo 25 s, direct 17 s
+   bins with > 100 counts: 36 ;  chi2/bin of MC single vs direct = 0.67
+   mean of MC/direct - 1 over those bins = -0.13 %
+    2theta     direct  MC single     error  MC multiple
+       7.5    0.01048    0.01054   0.00058      0.00651
+      37.5    0.01061    0.01053   0.00027      0.00691
+      67.5    0.01090    0.01095   0.00022      0.00702
+      97.5    0.01129    0.01136   0.00022      0.00757
+     127.5    0.01168    0.01157   0.00024      0.00752
+     157.5    0.01195    0.01217   0.00036      0.00742
+

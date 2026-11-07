@@ -12,3 +12,10 @@ docs/*.fls
 docs/*.fdb_latexmk
 docs/*.synctex.gz
 docs/*.pdf
+
+# Integrated modules: compiled manuals and regenerable numerical results
+*.pdf
+!**/figures/*.pdf
+*.npz
+*.npy
+.ipynb_checkpoints/

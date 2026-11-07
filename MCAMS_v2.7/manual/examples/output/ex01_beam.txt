@@ -1,0 +1,4 @@
+one start point: x = 0.118 mm, y = 2.703 mm
+uniform beam  : std(x) = 2.888 mm  (expected 2.887)
+gaussian H(x) : std(x) = 1.492 mm  (sigma = 1.5)
+                std(y) = 1.728 mm  (uniform: 1.732)

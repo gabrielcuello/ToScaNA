@@ -1,0 +1,19 @@
+Spherical sample, outer diameter 6.4 mm (centred on the beam, y from -3.2 to 3.2), 2 layer(s)
+ # name           r_in    r_out    thick  mu(1/mm) scat.frac  material y (mm)
+ 0 Ni            0.000    3.000    6.000    0.1800      0.94  full
+ 1 V             3.000    3.200    0.200    0.0460      0.78  full
+radii (mm): [3.  3.2]
+
+beam fraction meeting the sphere: 0.5027
+interacting per layer: [0.2149 0.0142]
+2theta =   0.0: transmission 0.6587 (horizontal plane), 0.6587 (vertical plane)
+2theta =  90.0: transmission 0.6916 (horizontal plane), 0.6926 (vertical plane)
+2theta = 180.0: transmission 0.7327 (horizontal plane), 0.7327 (vertical plane)
+
+Spherical sample, outer diameter 22 mm (centred on the beam, y from -11 to 11), 2 layer(s)
+ # name           r_in    r_out    thick  mu(1/mm) scat.frac  material y (mm)
+ 0 water         0.000   10.000   20.000    0.5600      1.00  -10.000 to 0.000 (0.50)
+ 1 glass        10.000   11.000    1.000    0.0300      1.00  full
+
+multiple / single = 0.399
+Paalman-Pings factors of the Ni (0, 90, 180 deg): [0.4427 0.4653 0.4909]

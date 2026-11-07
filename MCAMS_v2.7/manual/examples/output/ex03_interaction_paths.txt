@@ -1,0 +1,4 @@
+fraction of the particles that interact: 0.7027
+interactions per layer: [41608  3354 25304]
+mean path in each layer (mm): [2.228 1.24  0.743]
+mean transmission at 2theta = 60 deg: 0.5013

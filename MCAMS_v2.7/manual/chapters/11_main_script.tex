@@ -1,0 +1,106 @@
+\chapter{The main script}
+\label{ch:main}
+
+\section{What it does}
+
+\code{run_simulation.py} runs the whole chain for a chosen geometry:
+\begin{enumerate}
+  \item builds the sample (slab, disc, cylinder or sphere) from the settings at the top of the file;
+  \item computes the transmission versus $\twotheta$ (Chapter~\ref{ch:transmission});
+  \item simulates the particles one by one to obtain total, single and multiple scattering (Chapter~\ref{ch:scattering});
+  \item computes the transmission by layer of last scattering (Chapter~\ref{ch:lastlayer});
+  \item \raggedright prints a summary and saves the plots, with the name of the geometry in the file names
+        (\texttt{transmission\_slab.png}, \texttt{scattering\_orders\_cylinder.png}, \texttt{transmission\_by\_layer\_cylinder.png}, \ldots).
+\end{enumerate}
+
+\section{Choosing the geometry}
+
+From the command line:
+\begin{lstlisting}[style=shell]
+python run_simulation.py --geometry slab
+python run_simulation.py --geometry cylinder --particles 500000
+python run_simulation.py --geometry slab --plane-angle 60
+python run_simulation.py --geometry disc --plane-angle 45      # version 2.3
+python run_simulation.py --geometry sphere                      # version 2.4
+python run_simulation.py --geometry cylinder --no-show     # only save the plots
+python run_simulation.py --geometry cylinder --fullness 0.5  # half-full container
+python run_simulation.py --geometry cylinder --bottom -6 --height 5   # band -6..-1 mm
+\end{lstlisting}
+From Python or a notebook:
+\begin{lstlisting}
+from run_simulation import run_simulation
+results = run_simulation("cylinder", n_particles=300000, show=False)
+results["scattering"].single          # counts of single scattering per bin
+results["by_layer"].transmission      # table (layer, angle)
+\end{lstlisting}
+The options are summarised in Table~\ref{tab:cli}.
+
+\begin{table}[ht]
+  \centering\small
+  \begin{tabular}{@{}p{4.2cm}p{10.4cm}@{}}
+    \toprule \textbf{Option} & \textbf{Meaning} \\ \midrule
+    \code{--geometry} & \code{slab}, \code{disc}, \code{cylinder} or \code{sphere} (the default is set by \code{DEFAULT_GEOMETRY} in the file). \\
+    \code{--plane-angle} & Slab and disc: angle between the beam and the plane of the sample, in degrees (default 90). \\
+    \code{--particles} & Number of particles of the single/multiple scattering simulation (default 500000). The transmission curves use one tenth of that number. \\
+    \code{--no-show} & Do not open plot windows; only save the PNG files. \\
+    \code{--bottom}, \code{--height} & Version 2.2: band of the material of the layers listed in \code{CONTENT_LAYERS}, from \code{bottom} to \code{bottom + height}, in mm from the centre of the beam; either may be omitted (bottom or top of the sample) (Chapter~\ref{ch:partial}). \\
+    \code{--fullness} & Version 2.0: fullness of the layers listed in \code{CONTENT_LAYERS} (fraction of the beam height covered by their material, from the bottom of the sample); default: full. Not together with \code{--bottom}/\code{--height}. \\ \bottomrule
+  \end{tabular}
+  \caption{Command-line options of \texttt{run\_simulation.py}.}
+  \label{tab:cli}
+\end{table}
+
+\section{Using your own sample}
+
+Edit the settings at the top of the file:
+\begin{lstlisting}
+SLAB_LAYERS = [("Al", 2.0, 0.020, 1.0),   # name, thickness (mm), mu (1/mm), scatter fraction
+               ("Fe", 1.0, 0.250, 0.6),
+               ("Cu", 0.5, 0.300, 0.5)]
+SLAB_WIDTH, SLAB_HEIGHT = 20.0, 20.0
+
+CYLINDER_LAYERS = [("Fe", 6.0, 0.250, 0.6),   # first thickness = DIAMETER
+                   ("Al", 1.0, 0.020, 1.0),
+                   ("Cu", 0.5, 0.300, 0.5)]
+CYLINDER_HEIGHT = 20.0
+
+DISC_LAYERS = [("Al", 2.0, 0.020, 1.0),       # front face to the back, as the slab
+               ("Fe", 1.0, 0.250, 0.6),
+               ("Cu", 0.5, 0.300, 0.5)]
+DISC_DIAMETER = 20.0                          # the disc is centred on the beam
+
+SPHERE_LAYERS = [("Fe", 6.0, 0.250, 0.6),     # first thickness = DIAMETER
+                 ("Al", 1.0, 0.020, 1.0),     # then radial thicknesses
+                 ("Cu", 0.5, 0.300, 0.5)]     # centred on the beam
+
+BEAM_WIDTH, BEAM_HEIGHT = 8.0, 8.0
+
+SAMPLE_Y_BOTTOM = None                        # bottom of the sample; None = centred
+CONTENT_LAYERS = {"slab": ["Fe"], "cylinder": ["Fe"], "disc": ["Fe"],
+                  "sphere": ["Fe"]}           # used by --bottom/--height/--fullness
+\end{lstlisting}
+The tuples can be written by hand or produced with \code{make_layer_tuple} (Chapter~\ref{ch:builder}); a fifth element gives the fill
+height of a layer in mm (Chapter~\ref{ch:partial}). The layers of the slab and of the disc go from the front to the back; those of the
+cylinder and of the sphere from the axis (centre) outwards. \code{SAMPLE_Y_BOTTOM} is not used by the disc and the sphere, which are
+always centred on the beam. The values in the file are only illustrative.
+
+\section{A recommended workflow}
+
+\begin{enumerate}
+  \item \raggedright Write the layers with \code{make_layer_tuple} (or by hand) and check them with \code{make_sample(...)}\allowbreak\code{.summary()}.
+  \item Run \code{transmission_vs_angle} with 20\,000--50\,000 particles to see the attenuation as a function of the angle; it is fast.
+  \item Run \code{simulate_scattering_orders} with $10^5$--$10^6$ particles to know how important the multiple scattering is.
+  \item Use \code{transmission_by_last_layer} to find out which layer dominates the attenuation at each angle.
+  \item Repeat with \code{rng=seed} to reproduce a result exactly, and with different seeds to see the statistical spread.
+\end{enumerate}
+
+\section{Computing time}
+
+The times below were measured with $5\times10^4$ particles and 181 angles in the transmission by layer; the single/multiple scattering
+simulation of $10^6$ particles takes of the order of tens of seconds. The cylinder is slower than the slab because every path is cut into segments.
+\begin{center}\small
+\begin{tabular}{@{}lcc@{}}
+  \toprule & \textbf{slab} & \textbf{cylinder} \\ \midrule
+  \code{transmission_by_last_layer}, $5\times10^4$ particles, 181 angles & 0.6~s & 3.5~s \\ \bottomrule
+\end{tabular}
+\end{center}

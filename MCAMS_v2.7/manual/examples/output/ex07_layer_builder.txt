@@ -1,0 +1,22 @@
+H2O          -> H:2  O:1
+Fe2O3Na2Li   -> Fe:2  O:3  Na:2  Li:1
+D2O          -> [2H]:2  O:1
+[56Fe]2O3    -> [56Fe]:2  O:3
+Ca(OH)2      -> Ca:1  O:2  H:2
+
+Layer 'water': H2O  (H:2  O:1)
+  density            1 g/cm3, molar mass 18.0150 g/mol
+  formula units/cm3  3.34285e+22
+  sigma_scat 168.3 b, sigma_abs 0.665 b (per formula unit)
+  mu_scat 0.5626/mm, mu_abs 0.002223/mm, mu 0.56482/mm
+  scatter fraction   0.99606
+  cross sections: given by the user for the whole formula unit
+
+layer tuples:
+  ('D2O', 6.0, 0.06495421233421121, 0.9999370683312878)
+  ('Al can', 1.0, 0.01044935831671781, 0.8667820069204152)
+
+Cylindrical sample, height 20 mm (y from -10 to 10), 2 layer(s), outer diameter 8 mm (axis vertical)
+ # name           r_in    r_out    thick  mu(1/mm) scat.frac  material y (mm)
+ 0 D2O           0.000    3.000    6.000    0.0650      1.00  full
+ 1 Al can        3.000    4.000    1.000    0.0104      0.87  full

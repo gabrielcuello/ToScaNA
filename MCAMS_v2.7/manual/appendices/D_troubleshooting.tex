@@ -1,0 +1,37 @@
+\chapter{Troubleshooting}
+\label{app:trouble}
+
+\begin{description}[style=unboxed,leftmargin=0pt]
+  \item[\code{TypeError: create_slab_sample() got an unexpected keyword argument ...}] (or any message saying that a function does not accept an argument that
+        the manual uses). Python is using an old copy of a module. Replace all the files of the package and \textbf{restart the kernel} of the notebook (or reload the modules
+        with \code{importlib.reload}). Check which file is used with \code{print(module.__file__)} and the arguments with \code{inspect.signature(function)}.
+  \item[\code{ModuleNotFoundError: No module named 'sample'}] The slab module is called \code{slab} (functions \code{create_slab_sample}, class \code{SlabSample}).
+        Update the \code{import} lines of your scripts.
+  \item[\code{ModuleNotFoundError: No module named 'beam'} (or another module of the package)] Python does not find the files. Run it from the code folder, or add the folder
+        to the search path with \code{sys.path.insert(0, "folder")}.
+  \item[\code{FormulaError}] The formula cannot be read. The message says where. Remember: isotopes inside square brackets (\code{[2H]2O}), capital first letter of each symbol,
+        no number at the beginning of the formula, round parentheses for groups.
+  \item[\code{TableError: No tabulated cross sections ...}] The package \code{periodictable} is not installed (\code{pip install periodictable}) or does not have data for that
+        species. Give the cross sections yourself with \code{sigma_scat}/\code{sigma_abs} or \code{cross_sections={...}}.
+  \item[\code{ValueError: Some points are outside the sample}] A point or particle that should be inside the sample is outside it. Check the units (mm) and the frame:
+        points are in the \emph{sample} frame.
+  \item[\code{ValueError: Layer '...' is given by its fullness: create the sample with beam_height=...}] A layer has a \code{fullness} but the
+        sample does not know the height of the beam. Pass \code{beam_height=} to \code{create_slab_sample}, \code{create_cylindrical_sample} or
+        \code{make_sample}, or give the level as \code{fill_height} (mm) instead.
+  \item[\code{ValueError: Layer '...': give fill_height OR fullness, not both}] Remove one of the two.
+  \item[\code{ValueError: The disc geometry needs a `diameter` (mm)}] \code{make_sample("disc", ...)} needs \code{diameter=}; \code{width} and \code{height} are not used for a disc.
+  \item[A spherical sample is larger or smaller than expected] The thickness of the first layer is the \emph{diameter} of the inner sphere,
+        not its radius; print \code{sample.radii}.
+  \item[A disc and a slab give different results] They should agree only while the particles do not reach the edge (Chapter~\ref{ch:disc}): check the size of the
+        beam against \code{face_area_in_beam}, and look at angles near the plane of the sample.
+  \item[\code{ValueError: Layer '...': give bottom/height OR fill_height/fullness, not both}] Use one description per layer; \code{bottom}/\code{height} is the recommended one.
+  \item[\code{ValueError: Give the sample height, or the bottom AND height of at least one layer}] With \code{height=None} the sample is the envelope of the
+        layers, so at least one layer needs both \code{bottom} and \code{height}.
+  \item[A partially filled layer seems full, or empty] With \code{bottom}/\code{height}, remember that heights are measured from the \emph{centre of the beam},
+        not from the bottom of the sample, and that the band is cut at the bottom and top of the sample. With \code{fill_height}, check where the bottom of
+        the sample is: by default the sample is centred on the beam ($y_\mathrm{bottom}=-\text{height}/2$), so a small fill height may stay below the beam. Print \code{sample.summary()} with a known
+        \code{beam_height}: the fullness of each layer is shown in parentheses. Remember that \code{fullness=1} means completely full.
+  \item[\code{RuntimeError: No particle interacted}] Increase \code{n_particles}, check that the beam hits the sample and that the attenuation coefficients are not zero.
+  \item[Noisy curves] Increase \code{n_particles}, use wider bins (\code{angle_edges_deg}) or all azimuths. The bins near $0^\circ$ and $180^\circ$ always have few counts.
+  \item[The plot window does not open] Use \code{show=False} and \code{save_as="file.png"} (or \code{.pdf}) to save the figure.
+\end{description}

@@ -1,0 +1,20 @@
+
+ Block  1
+ ========
+
+ Instrument: D4
+ User      : 
+ Run number:            0
+ Spectrum  :            0
+ Title     : sample
+ Run date  : 
+ X caption : Momentum transfer (A**-1)
+ Y caption : Cross-section
+ Histogram :            F
+ Points    :         1068
+    3.2996732E-01    3.5859408E+00    1.0346565E-01
+    3.5746282E-01    3.7719980E+00    1.0724139E-01
+    3.8495790E-01    3.7458354E+00    1.0737155E-01
+    4.1245252E-01    3.8104154E+00    1.0854636E-01
+    4.3994665E-01    3.9151593E+00    1.0847365E-01
+   ...

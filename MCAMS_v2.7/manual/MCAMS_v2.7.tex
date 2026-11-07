@@ -1,0 +1,84 @@
+% =========================================================================
+%  MCAMS -- Monte Carlo Attenuation and Multiple Scattering
+%  User manual
+%  Compile with:   latexmk -pdf main.tex   (or: make)
+%  or:             pdflatex main.tex  (three times, for the cross references)
+%  Figures are produced by  python tools/make_figures.py
+% =========================================================================
+\documentclass[11pt,a4paper]{report}
+\input{preamble}
+
+\begin{document}
+
+% ---------------------------------------------------------------- title
+\begin{titlepage}
+\thispagestyle{empty}
+\vspace*{2.5cm}
+{\color{accent}\rule{\linewidth}{2pt}}\par\vspace{0.6cm}
+{\fontsize{44}{48}\selectfont\bfseries\mcams}\par\vspace{0.3cm}
+{\LARGE Monte Carlo Attenuation and Multiple Scattering}\par\vspace{0.2cm}
+{\Large\color{ink2} Particle trajectories through layered slab, disc, cylindrical and
+spherical samples, with layers of any vertical extent}\par
+\vspace{0.6cm}{\color{accent}\rule{\linewidth}{2pt}}\par
+\vspace{1.5cm}
+{\Large User Manual}\par\vspace{0.3cm}
+{\large Version 2.7 \quad(worked examples in the notation of \textsc{correct}; all the factors $A_{x,y}$)}\par
+{\normalsize\color{ink2} The Python modules are those of version 2.4}\par
+\vfill
+\begin{tikzpicture}
+  \fill[noteback] (0,0) rectangle (\linewidth,2.4);
+  \node[anchor=north west,text width=0.95\linewidth,align=left] at (0.3,2.2) {
+  \small Python package and manual: Gabriel Cuello, with Claude (Anthropic).\\[3pt]
+  Beam, sample (slab, disc, cylinder or sphere) and detector of a two-axis instrument; interaction points,
+  attenuation, single and multiple scattering, layers from chemical formulas.\\[3pt]
+  Requires Python $\geq$ 3.8, NumPy and Matplotlib (\texttt{periodictable} optional).};
+\end{tikzpicture}
+\vspace{1cm}
+{\small\color{ink2}\today}
+\end{titlepage}
+
+\pagenumbering{roman}
+\tableofcontents
+\clearpage
+\pagenumbering{arabic}
+
+\include{chapters/01_introduction}
+\include{chapters/02_installation}
+\include{chapters/03_geometry}
+\include{chapters/04_beam}
+\include{chapters/05_sample}
+\include{chapters/05b_partial_fill}
+\include{chapters/05c_disc}
+\include{chapters/05d_sphere}
+\include{chapters/06_physics}
+\include{chapters/07_transmission}
+\include{chapters/08_scattering}
+\include{chapters/09_last_layer}
+\include{chapters/09b_direct_method}
+\include{chapters/10_layer_builder}
+\include{chapters/11_main_script}
+\include{chapters/11b_correct_examples}
+\include{chapters/12_validation}
+\include{chapters/13_limits}
+
+\appendix
+\include{appendices/A_api_reference}
+\include{appendices/B_numpy_glossary}
+\include{appendices/C_symbols}
+\include{appendices/D_troubleshooting}
+\include{appendices/E_correct_tools}
+
+\begin{thebibliography}{9}
+\bibitem{sears} V.~F. Sears, \emph{Neutron scattering lengths and cross sections},
+  Neutron News \textbf{3}(3), 26--37 (1992).
+\bibitem{hg} L.~C. Henyey and J.~L. Greenstein, \emph{Diffuse radiation in the Galaxy},
+  Astrophysical Journal \textbf{93}, 70--83 (1941).
+\bibitem{numpy} C.~R. Harris \emph{et al.}, \emph{Array programming with NumPy},
+  Nature \textbf{585}, 357--362 (2020).
+\bibitem{mpl} J.~D. Hunter, \emph{Matplotlib: a 2D graphics environment},
+  Computing in Science \& Engineering \textbf{9}, 90--95 (2007).
+\bibitem{periodictable} \emph{periodictable}: periodic table of the elements for Python,
+  \url{https://periodictable.readthedocs.io}.
+\bibitem{pp} H.~H.~Paalman and C.~J.~Pings, \emph{J. Appl. Phys.} \textbf{33}, 2635 (1962).
+\end{thebibliography}
+\end{document}

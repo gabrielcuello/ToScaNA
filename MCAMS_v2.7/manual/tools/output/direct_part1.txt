@@ -1,0 +1,18 @@
+==============================================================================
+1. EXACT CHECKS (direct method, 400 000 points per layer)
+==============================================================================
+case                               2theta     exact    direct    error      z
+slab, normal incidence                  0   0.60653   0.60653  0.00000  exact
+slab, normal incidence                 30   0.58367   0.58367  0.00002   0.14
+slab, normal incidence                 60   0.47730   0.47732  0.00011   0.15
+slab, normal incidence                120   0.51791   0.51788  0.00035  -0.10
+slab, normal incidence                150   0.61215   0.61212  0.00030  -0.12
+slab, normal incidence                180   0.63212   0.63209  0.00029  -0.12
+slab, fullness 0.5                     30   0.58367   0.58364  0.00002  -1.36
+slab, fullness 0.5                    150   0.61215   0.61265  0.00030   1.66
+   mean path in the layer: full 2.0000 mm, fullness 0.5 0.9976 +- 0.0010 mm (exact 1.0000)
+cylinder Ni+V, beam 2 mm, A_s           0   0.33956   0.33956  0.00001  -0.08
+cylinder Ni+V, beam 2 mm, A_s         180   0.40701   0.40752  0.00038   1.32
+furnace A_h,sch (fine grid)            30   0.75307   0.75316  0.00042   0.22
+furnace A_h,sch (fine grid)           150   0.76136   0.76130  0.00044  -0.13
+

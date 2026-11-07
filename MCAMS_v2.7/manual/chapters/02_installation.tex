@@ -1,0 +1,69 @@
+\chapter{Installation and requirements}
+\label{ch:install}
+
+\section{Requirements}
+
+\begin{itemize}
+  \item \textbf{Python} 3.8 or newer (the package was developed and tested with Python 3.12).
+  \item \textbf{NumPy} (tested with 2.4) for all the calculations.
+  \item \textbf{Matplotlib} (tested with 3.10) for the plots. It is only needed by the \code{plot_...}
+        functions and by the demonstrations at the end of the modules.
+  \item \textbf{periodictable} (optional): tabulated neutron cross sections and atomic masses for
+        Chapter~\ref{ch:builder}. Without it you provide the cross sections yourself.
+\end{itemize}
+To install what is needed:
+\begin{lstlisting}[style=shell]
+pip install numpy matplotlib
+pip install periodictable        # optional
+\end{lstlisting}
+
+\section{Files and folders}
+
+The package is a set of ordinary Python files that must be in the same folder (the \emph{code folder}).
+There is nothing to install: the modules are found because they are in the folder from which you run Python
+or the notebook.
+\begin{lstlisting}[style=shell]
+code folder/
+    beam.py  sample_base.py  slab.py  disc.py  cylinder.py  sphere.py  sample_factory.py
+    transmission_vs_angle.py  multiple_scattering.py  transmission_by_layer.py
+    direct_attenuation.py  formula.py  nuclear_data.py  layer_builder.py  run_simulation.py
+    tests/test_mcams.py         (self-test)
+    manual/                     (this manual)
+\end{lstlisting}
+
+\section{Checking the installation}
+
+Every module has a short demonstration at its end, which runs when the file is executed. From the code folder:
+\begin{lstlisting}[style=shell]
+python slab.py          # flat cell, partially filled: interaction points and paths
+python cylinder.py      # can, partially filled: the same
+python disc.py          # round cell, partially filled; beam larger than the disc
+python sphere.py        # spherical container half filled with a powder
+python formula.py       # chemical formulas
+python layer_builder.py # layers from formulas
+\end{lstlisting}
+If these run without errors, the package is ready. The folder \file{tests/} contains a self-test of the
+geometry, which compares the paths with a brute-force calculation and the interaction rates with exact results:
+\begin{lstlisting}[style=shell]
+python tests/test_mcams.py
+...
+ALL PASSED
+\end{lstlisting}
+
+\section{Use in a Jupyter notebook}
+
+Two points deserve attention in notebooks:
+\begin{enumerate}
+  \item Python imports a module only once per session. If you replace a file by a newer version, the notebook
+        keeps using the old one until the \textbf{kernel is restarted} (or the module is reloaded with
+        \code{importlib.reload}). A message such as \code{TypeError: create_slab_sample() got an unexpected keyword argument ...}
+        usually means that an old version is still loaded (see Appendix~\ref{app:trouble}).
+  \item Cells of a notebook can be run in any order. After changing the sample or the beam, run again the cells that depend on them.
+\end{enumerate}
+
+\section{Reproducibility}
+
+All the functions that use random numbers accept the argument \code{rng}, which can be an integer
+(a seed) or a NumPy generator created with \code{np.random.default_rng(seed)}. With the same seed the
+results are identical from one run to the next. Without it, every run gives slightly different
+results, as expected from a Monte Carlo method.

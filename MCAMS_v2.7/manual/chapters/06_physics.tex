@@ -1,0 +1,104 @@
+\chapter{Physics and algorithms}
+\label{ch:physics}
+
+This chapter explains the calculations that all the analysis modules share. Chapter~\ref{ch:geometry} defines the geometry.
+
+\section{Attenuation: the Beer--Lambert law}
+
+A particle that travels a distance $L_i$ in a material with linear attenuation coefficient $\mu_i$ has the probability
+$\exp(-\mu_iL_i)$ of crossing it without interacting. After crossing several layers,
+\begin{equation}
+  T = \exp\!\Big(-\sum_i \mu_i L_i\Big) = \e^{-\tau},\qquad \tau=\sum_i\mu_iL_i,
+  \label{eq:beer}
+\end{equation}
+where $\tau$ is the \emph{optical depth}. This is what \code{sample.transmission(path_lengths)} computes, from a table of
+path lengths with one row per particle and one column per layer.
+
+\section{Where does a particle interact?}
+
+The optical depth at which a particle has its first interaction is a random number with the exponential distribution. It is
+generated from a uniform random number $u\in[0,1)$ with
+\begin{equation}
+  \tau = -\ln(1-u).
+  \label{eq:tau}
+\end{equation}
+The particle interacts inside the sample if $\tau$ is smaller than the total optical depth of its path through the sample;
+otherwise it crosses the sample without interacting. To convert $\tau$ into a position one follows the particle through the
+layers, adding $\mu_iL_i$ until the value $\tau$ is reached; inside that layer the position is found by linear interpolation
+(the optical depth grows linearly with distance, with slope $\mu_i$).
+
+\subsection{Slab}
+
+For a slab rotated by $\omega=90^\circ-\alpha$ (Chapter~\ref{ch:geometry}), the beam is oblique with respect to the layers:
+the path through a thickness $t$ is $t/\cos\omega$, and the footprint of the beam on the front face is stretched by
+$1/\cos\omega$. The optical depth along the beam equals the optical depth along the normal divided by $\cos\omega$, so a random
+$\tau$ corresponds to the value $\tau\cos\omega$ measured along the normal. The beam is a ray
+\begin{equation}
+  x' = x_\mathrm{entry}-\sigma\sin\omega,\qquad z' = z_\mathrm{front}+\sigma\cos\omega,
+\end{equation}
+as a function of the distance $\sigma$ along it. Because the section of the sample is finite, the function also
+takes into account that a particle can \emph{enter through a side face}, and that it can \emph{leave through a side face before
+interacting}: such particles are handled correctly (the optical depth only starts to accumulate at the entry point).
+In practice the calculation follows each beam particle from a point upstream of the sample and finds, for every layer, the
+interval of the path spent in its material; the same intervals serve for partially filled layers (Section~\ref{sec:partial-algorithm}).
+
+\subsection{Disc}
+
+The disc (Chapter~\ref{ch:disc}) is handled exactly as the slab, with one change: the box of the sample is replaced by the
+cylinder $x'^2+y'^2\le R^2$ whose axis is the normal $z'$, between the front and back faces. Its intersection with a straight
+line is one interval, the solution of a quadratic equation like the one of the next subsection, written in the plane $(x',y')$
+of the disc instead of the horizontal plane $(x,z)$ (Section~\ref{sec:disc-algorithm}).
+
+\subsection{Cylinder}
+
+Seen from above, a cylinder of radius $R$ is the circle $x^2+z^2=R^2$. A particle that moves as $\vec p+t\,\hat d$ meets it
+where
+\begin{equation}
+  a\,t^2+2b\,t+c=0,\quad a=d_x^2+d_z^2,\;\; b=x\,d_x+z\,d_z,\;\; c=x^2+z^2-R^2,
+\end{equation}
+that is, at $t=\big(-b\pm\sqrt{b^2-ac}\big)/a$. Applying this to the radius of every layer, and adding the places where the particle
+reaches the top or bottom faces ($y=\pm h/2$), cuts the path into \emph{segments}. Inside a segment the material is always the
+same, and it is found from the distance of the segment's midpoint to the axis. The length of the path in each layer is the sum of the
+lengths of its segments, and the next interaction is found by accumulating $\mu\,\Delta t$ segment by segment until the random
+$\tau$ is reached. Particles parallel to the axis (no horizontal motion) are handled as a special case. When some layers are
+partially filled, the crossings of their levels are added to the segments and the segments above the level of their layer get
+$\mu=0$ (Section~\ref{sec:partial-algorithm}).
+
+Figure~\ref{fig:traj} (Chapter~\ref{ch:geometry}) illustrates these steps: the incident particles end at their first interaction point, and from there the path towards the detector is followed.
+
+\subsection{Sphere}
+
+The sphere (Chapter~\ref{ch:sphere}) is cut into segments exactly as the cylinder, with spheres instead of cylinders: the path
+$\vec p+t\,\hat d$ meets the sphere of radius $r_i$ where $t^2 + 2(\vec p\cdot\hat d)\,t + |\vec p|^2 - r_i^2 = 0$, the layer of a
+segment is given by the distance of its midpoint to the centre, and there are no flat ends (Section~\ref{sec:sphere-algorithm}).
+
+\section{Path from a point to the exit of the sample}
+
+Given an interaction point $\vec p$ and a direction $\hat d$ (for instance that of the detector), the function
+\code{outgoing_path_lengths} returns the distance travelled in each layer until the particle leaves the sample.
+For the \textbf{slab}, the distance to the exit is $t_\mathrm{exit}=\min_k (b_k-p_k)/d_k$, where $b_k$ is the face reached in each coordinate
+(the one in the sense of $d_k$); the layer $i$, between the planes $z_i^\mathrm{lo}$ and $z_i^\mathrm{hi}$, is crossed between
+$t_a=(z_i^\mathrm{lo}-p_z)/d_z$ and $t_b=(z_i^\mathrm{hi}-p_z)/d_z$, and the path inside it is the overlap of that interval with
+$[0,t_\mathrm{exit}]$. For the \textbf{disc} the exit is where the path leaves the cylinder of radius $R$ or one of the faces,
+whichever comes first. For the \textbf{cylinder} and the \textbf{sphere} the segments described above are used. Particles travelling parallel to the layers (slab) stay in the layer where they start.
+
+\section{Scattering, absorption and multiple scattering}
+
+At every interaction the particle is scattered with the probability \code{scatter_fraction} of the layer; otherwise it is
+absorbed and lost. A scattered particle gets a new direction: the deflection angle $\chi$ relative to the previous direction
+is drawn from an angular distribution, and the azimuth around the previous direction is uniform. By default
+the distribution is isotropic ($\cos\chi$ uniform in $[-1,1]$). A Henyey--Greenstein distribution \cite{hg} is available,
+\begin{equation}
+  \cos\chi=\frac{1}{2g}\left[1+g^2-\left(\frac{1-g^2}{1-g+2gu}\right)^{2}\right],
+\end{equation}
+with $g>0$ forward peaked, $g<0$ backward peaked and $g=0$ isotropic. Any function \code{(n, rng)} $\to$ $n$ values of $\cos\chi$
+can be used. After scattering, the particle flies on and either interacts again or leaves the sample
+(Chapter~\ref{ch:scattering}).
+
+\section{Example}
+
+\pyexample{ex03_interaction_paths}
+
+The first lines show that 70\,\% of the particles of the beam interact; most of the interactions are in the inner Fe cylinder, which is the most
+attenuating one. The paths are averages over the interacting particles: on the way out towards $\twotheta=60^\circ$ they cross
+on average 2.2~mm of Fe, 1.2~mm of Al and 0.7~mm of Cu.

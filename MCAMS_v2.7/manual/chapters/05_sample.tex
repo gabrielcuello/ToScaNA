@@ -1,0 +1,79 @@
+\chapter{Describing the sample}
+\label{ch:sample}
+
+\section{The layer}
+
+Every layer is described by four values and, optionally, its vertical extent, grouped in the record \code{Layer} (module \code{sample_base.py}):
+\begin{center}
+\begin{tabular}{@{}lp{10.5cm}@{}}
+  \toprule
+  \textbf{Field} & \textbf{Meaning} \\ \midrule
+  \code{name} & Label of the material (free text, e.g. \code{"Fe"}). \\
+  \code{thickness} & Size of the layer in mm, $>0$. Slab: along the normal. Cylinder: radial thickness, except for the first layer, for which it is the \emph{diameter}. \\
+  \code{mu} & Total linear attenuation coefficient in mm$^{-1}$ (scattering + absorption), $\ge 0$. Use 0 for a gap. \\
+  \code{scatter_fraction} & Fraction of the interactions that are scattering (the rest is absorption), between 0 and 1. Default 1. Only needed for multiple scattering. \\
+  \code{bottom} & Optional (version 2.2). Height $y$ of the bottom of the material, in mm from the centre of the beam. Default \code{None}: the bottom of the sample. \\
+  \code{height} & Optional (version 2.2). Height of the material in mm; the layer is empty below \code{bottom} and above \code{bottom + height}. Default \code{None}: up to the top of the sample. \\
+  \code{fill_height} & Optional (version 2.0), instead of \code{bottom}/\code{height}: height of the material in mm above the bottom of the sample. \\
+  \code{fullness} & Optional (version 2.0), instead of \code{bottom}/\code{height}: fraction of the beam height covered by the material, starting at the bottom of the sample (1 = full). Needs the \code{beam_height} of the sample. \\ \bottomrule
+\end{tabular}
+\end{center}
+In practice a layer is written as a plain tuple \code{(name, thickness, mu, scatter_fraction)}; the last element is optional, and a
+fifth element gives the fill height. A \code{Layer} object or a dictionary with the same field names can be used as well;
+they are needed to give \code{bottom} and \code{height} (Chapter~\ref{ch:partial}). The function \code{make_layer_tuple} of Chapter~\ref{ch:builder} computes such a tuple from the chemical
+formula and the density.
+
+\section{Creating a sample}
+
+\begin{description}[style=unboxed,leftmargin=0pt]
+  \item[\code{create_slab_sample(width, height, layers, z_front=0.0, plane_angle_deg=90.0, y_bottom=None, beam_height=None)}]
+        slab of section \code{width}$\times$\code{height} mm; layers from the front face to the back;
+        orientation given by \code{plane_angle_deg}.
+  \item[\code{create_disc_sample(diameter, layers, z_front=0.0,}\newline\code{plane_angle_deg=90.0, beam_height=None)}]
+        disc of the given diameter, centred on the beam; layers from the front face to the back, as for the slab
+        (version 2.3, Chapter~\ref{ch:disc}).
+  \item[\code{create_spherical_sample(layers, beam_height=None)}] concentric spheres centred on the beam; layers from the inner
+        sphere outwards, as for the cylinder (version 2.4, Chapter~\ref{ch:sphere}).
+  \item[\code{create_cylindrical_sample(height, layers, y_bottom=None, beam_height=None)}] concentric vertical cylinders of the given height
+        (or \code{None}: the envelope of the layers);
+        layers from the axis outwards (the first thickness is a diameter).
+  \item[\code{make_sample(geometry, layers, height=None, width=None,}\newline\code{plane_angle_deg=90.0, y_bottom=None, beam_height=None, diameter=None)}] the ``factory'': \code{geometry} is
+        \code{"slab"}, \code{"disc"}, \code{"cylinder"} or \code{"sphere"}. It makes it easy to change geometry by changing one word;
+        \code{width} is required for the slab and \code{diameter} for the disc; the sphere needs only its layers.
+\end{description}
+\code{y_bottom} and \code{beam_height} are only needed for layers with a limited vertical extent (Chapter~\ref{ch:partial}): the first
+sets the height of the bottom of the sample (default: centred on the beam, or the lowest bottom of the layers when the height is
+\code{None}), the second converts a fullness into a level and gives \code{beam_fullness()}. The \code{height} of the slab may also be
+\code{None}.
+Each sample has the method \code{summary()}, which returns a text table, and the slab has
+\code{with_plane_angle(angle)}, which returns a copy with another orientation.
+
+\pyexample{ex02_samples}
+
+\section{The common interface}
+
+Slab and cylinder inherit from the abstract class \code{LayeredSample} (Table~\ref{tab:interface}); the disc inherits from the slab and the sphere from the cylinder.
+Anything written against this interface works with all four. To add a new geometry (for example a sphere), write a class
+that inherits from \code{LayeredSample} and implements the abstract methods.
+
+\begin{table}[ht]
+  \centering\small
+  \begin{tabular}{@{}p{5.6cm}p{9.2cm}@{}}
+    \toprule \textbf{Method} & \textbf{Purpose} \\ \midrule
+    \code{sample_interaction_points(x, y)} & First interaction of beam particles; returns the points (in the sample frame) and a True/False table over all the particles. \\
+    \code{next_interaction(points, directions)} & Next interaction of particles already flying inside the sample (multiple scattering). \\
+    \code{outgoing_path_lengths(points, directions)} & Distance travelled in each layer from a point to the exit of the sample along a direction. \\
+    \code{transmission(path_lengths)} & Beer--Lambert survival $\exp(-\sum_i\mu_iL_i)$ for given paths. \\
+    \code{layer_of_points(points)} & Index of the layer whose material contains each point ($-1$ outside, or in the empty part of a layer). \\
+    \code{contains(points)} & True for the points that are inside the volume of the sample. \\
+    \code{beam_fullness(beam_height)} & Fraction of the beam height covered by the material of each layer. \\
+    \code{to_sample_frame(v)}, \code{to_lab_frame(v)} & Convert vectors between the lab frame and the sample frame. \\
+    \code{summary()} & Text table describing the sample. \\ \bottomrule
+  \end{tabular}
+  \caption{Methods of the common interface \texttt{LayeredSample}.}
+  \label{tab:interface}
+\end{table}
+
+Points and directions passed to \code{outgoing_path_lengths} and \code{next_interaction} are in the \emph{sample frame}.
+A direction defined in the lab frame (for example the direction of the detector) must be converted first with
+\code{sample.to_sample_frame(...)}.

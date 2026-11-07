@@ -1,0 +1,47 @@
+\chapter{Symbols}
+\label{app:symbols}
+
+\begin{longtable}{@{}p{2.8cm}p{12cm}@{}}
+\toprule \textbf{Symbol} & \textbf{Meaning} \\ \midrule \endhead
+$x,\,y,\,z$ & lab frame: $x$ horizontal, $y$ vertical, $z$ along the beam (mm) \\
+$x',\,y',\,z'$ & sample frame; $z'$ is the normal of the layers of a slab or a disc (mm) \\
+$\twotheta$ & scattering angle: between the final direction and the incident beam $+z$ (degrees) \\
+$\varphi$ & azimuth of a direction around the beam, from $+x$ towards $+y$ (degrees); $\varphi=0$ is the horizontal plane towards $+x$ \\
+$\alpha$ & slab and disc: angle between the beam and the plane of the sample (\code{plane_angle_deg}) \\
+$\omega$ & slab and disc: tilt of the normal with respect to the beam, $\omega=90^\circ-\alpha$ \\
+$D,\,R$ & disc: diameter and radius (mm) \\
+$S$ & disc: area of the face hit by the beam, seen along the beam; sphere: area of the circle of radius $R_\mathrm{out}$ inside the beam (mm$^2$) \\
+$r_k$, $R_\mathrm{out}$ & sphere and cylinder: outer radius of layer $k$, and of the whole sample (mm) \\
+$\mu$ & total linear attenuation coefficient of a layer (mm$^{-1}$) \\
+$\mu_\mathrm{scat},\,\mu_\mathrm{abs}$ & its scattering and absorption parts (mm$^{-1}$) \\
+$\tau$ & optical depth, $\tau=\sum\mu_iL_i$ \\
+$L_i$ & path length in layer $i$ (mm) \\
+$T$ & transmission, $\exp(-\tau)$ \\
+$T_k$ & transmission for the particles whose last scattering was in layer $k$ \\
+$H(x),\,V(y)$ & horizontal and vertical intensity profiles of the beam \\
+$\chi$ & deflection angle of one scattering event \\
+$g$ & asymmetry parameter of the Henyey--Greenstein distribution \\
+$R,\,r_k$ & radius of a cylinder; outer radius of layer $k$ of a cylindrical sample (mm) \\
+$\rho$, $M$, $n$ & density (g/cm$^3$), molar mass (g/mol), formula units per cm$^3$ \\
+$\sigma_\mathrm{scat},\,\sigma_\mathrm{abs}$ & scattering and absorption cross sections (barn) \\
+$N_A$ & Avogadro constant, $6.02214076\times10^{23}$~mol$^{-1}$ \\
+$\Delta\Omega$ & solid angle of a bin of $\twotheta$ (sr) \\
+$h_b$ & height of the beam (mm) \\
+$y_\mathrm{bottom}$, $y_\mathrm{top}$ & bottom and top of the sample (mm, lab $y$) \\
+$b_i,\,t_i$ & bottom and top of the material of layer $i$ (mm, lab $y$, from the centre of the beam) \\
+$h_i$ & height of the material of layer $i$, $t_i - b_i$ (mm); in the form of version 2.0, the fill height above the bottom of the sample \\
+$y_i$ & level of the material of layer $i$ in the form of version 2.0, $y_i = y_\mathrm{bottom}+h_i$ (mm) \\
+$f,\,f_i$ & fullness: fraction of the beam height covered by the material of a layer \\
+$f_k$ & scatter fraction of layer $k$ (\code{scatter_fraction}) \\
+$I_{sch},\,I_{ch},\,I_h$ & measured intensities: sample + container + heater, container + heater, heater (Chapter~\ref{ch:correct}) \\
+$I_s,\,I_c,\,I_h$ & unattenuated single scattering of sample, container and heater \\
+$A_{x,y}$ & attenuation factor of the part $x$ (s, c, h) when the parts $y$ (sch, ch, h) are present, e.g.\ $A_{s,sch}$ \\
+$S_y,\,M_y,\,\delta_y$ & single and multiple scattering of the run $y$, and $\delta_y = M_y/S_y$ \\
+$A_{x,y}^{*}$ & diagnostic factor, $x$ not in $y$: attenuation of the scattering of $x$ by the other parts only (Section~\ref{sec:all-factors}) \\
+$\chi^2$ & sum of the squared normalised residuals of the least-squares correction \\
+$A_k(\twotheta)$ & single-scattering attenuation factor of layer $k$ (Paalman \& Pings factor), Chapter~\ref{ch:direct} \\
+$\langle L_k\rangle$ & mean path of the beam in the material of layer $k$, averaged over the beam (mm) \\
+$L^{\mathrm{in}},\,L^{\mathrm{out}}$ & paths of the incident beam up to a point, and from the point to the exit towards the detector (mm) \\
+$\varepsilon$, FOM & relative statistical error; figure of merit $1/(\varepsilon^2t)$, $t$ = run time \\
+\bottomrule
+\end{longtable}

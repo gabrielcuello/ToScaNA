@@ -1,0 +1,60 @@
+\chapter{Assumptions, limits and possible extensions}
+\label{ch:limits}
+
+\section{Assumptions of the model}
+
+\begin{itemize}
+  \item \textbf{Interactions} are described by one total linear attenuation coefficient per layer; absorption and scattering are separated only by the
+        scatter fraction. There is no energy (or wavelength) change in a scattering event.
+  \item \textbf{Angular distribution} of one scattering event: isotropic by default, the same in all layers, independent of the incident direction apart from the
+        deflection angle. A Henyey--Greenstein distribution or any user function can be used. Real materials, with coherent scattering, have angular patterns that depend
+        on the material; they have to be provided by the user.
+  \item \textbf{Transmission} is the pure attenuation along the path to the detector; the probability of scattering towards the detector (common factor) is not included
+        in Chapters~\ref{ch:transmission} and~\ref{ch:lastlayer}. In Chapter~\ref{ch:scattering} it is included automatically, because the final directions are the result of the
+        random scattering.
+  \item \textbf{Detector}: the direction of the detector is exact (no angular width, no finite distance or size). The counting of Chapter~\ref{ch:scattering} uses bins in
+        $\twotheta$ and, optionally, an azimuth window.
+  \item \textbf{Geometry}: four shapes, slab (rectangular section), disc (circular section, centred on the beam, all layers of the same
+        diameter), concentric cylinders and concentric spheres (centred on the beam). The sample has one height; the material of each layer lies between its own bottom and top, two flat horizontal surfaces,
+        with empty space below and above (Chapter~\ref{ch:partial}). The cylinder axis passes through the centre of the instrument; the slab rotates
+        about the vertical axis through the centre of its front face. There is no sample environment, no bottom or lid of the container, and no container other than the layers that you define.
+  \item \textbf{Beam}: perfectly parallel, with independent horizontal and vertical profiles, centred on the axis. The sample can be moved vertically with \code{y_bottom}.
+\end{itemize}
+
+\section{Practical limits}
+
+\begin{itemize}
+  \item The direct method (Chapter~\ref{ch:direct}) is for single scattering only, and loses efficiency for $\mu R\gtrsim1$, where the
+        Monte Carlo is better.
+  \item Multiple scattering is followed up to \code{max_orders} scatterings per particle (default 200); \code{res.n_unfinished} tells how many particles were
+        still inside (it should be 0).
+  \item For the slab, a beam parallel to the plane of the sample is not allowed (the angle must be strictly between $0^\circ$ and $180^\circ$).
+  \item Elements heavier than curium have no built-in mass: give it with \code{masses=}.
+  \item Tabulated absorption cross sections scaled with $1/v$ are inaccurate near resonances.
+\end{itemize}
+
+\section{Ideas to extend the package}
+
+\begin{itemize}
+  \item \textbf{Direct method for strongly attenuating samples}: drawing the points along each beam line with the density $\mu\e^{-\tau}$
+        (importance sampling) instead of uniformly would combine the advantages of the two methods of Chapter~\ref{ch:direct}.
+  \item A \textbf{finite detector}: width, height and distance to the sample, counting the particles that reach it.
+  \item An \textbf{angle-dependent cross section} for each material (for instance from a measured or computed structure factor), instead of an isotropic or
+        Henyey--Greenstein distribution.
+  \item \textbf{Other geometries}: write a new class that inherits from \code{LayeredSample} and implements the abstract methods (Table~\ref{tab:interface}).
+        A flat sample with another convex section (an ellipse, a polygon) needs even less: a subclass of \code{SlabSample} that redefines
+        \code{_section_interval} and \code{contains}, as the disc does (Section~\ref{sec:disc-algorithm}).
+  \item \textbf{Sphere}: an offset centre; a neck or a stem (a vertical cylinder joined to the sphere); a hemisphere or other
+        caps. A round shape whose layers are concentric needs only \code{_shell_interval}, \code{_radius_of} and
+        \code{_outline_interval}, as the sphere (Section~\ref{sec:sphere-algorithm}): an ellipsoid or a horizontal cylinder are examples.
+  \item \textbf{Disc}: an offset centre $(x_0,y_0)$; layers of different diameters (windows larger than the sample); a ring-shaped layer
+        (a holder or a clamp around the sample).
+  \item \textbf{X-ray attenuation}: only the data source changes (\code{nuclear_data.AtomicData} can be replaced through the argument \code{data=}).
+  \item A \textbf{package structure} with an \code{__init__.py} file, so that the modules can be imported as a library.
+  \item \textbf{Container bottom (base plate), lid or support}, a \textbf{gas} in the empty space, or a \textbf{meniscus}: they need horizontal layers or
+        curved surfaces. A base plate is a horizontal disc (or slab) spanning several concentric layers; the material intervals (slab) and segments
+        (cylinder) of Section~\ref{sec:partial-algorithm} can accommodate it with one more kind of region. For a two-axis detector in the
+        horizontal plane a base plate below the beam only affects the multiple scattering.
+  \item An \textbf{intensity-weighted fullness} for non-uniform beams, $\int V(y)\,\mathrm{d}y$ over the material divided by the same over the beam,
+        as a method of the sample: this is the number to give to \textsc{correct} when the vertical profile is not flat.
+\end{itemize}

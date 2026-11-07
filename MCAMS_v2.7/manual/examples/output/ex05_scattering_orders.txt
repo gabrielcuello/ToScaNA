@@ -1,0 +1,8 @@
+incident particles        : 300000
+no interaction (cross/miss): 88801
+absorbed                  : 128175
+scattered and exited      : 83024
+single / multiple         : 57599 / 25425  (30.6 % multiple)
+bin centres of 2theta (first 4): [1. 3. 5. 7.]
+single counts in those bins   : [ 24.  56.  89. 123.]
+forward peaked (g = 0.8): multiple = 29527

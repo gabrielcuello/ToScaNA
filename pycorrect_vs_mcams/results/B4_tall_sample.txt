@@ -1,0 +1,6 @@
+# Ni R=0.30 cm, beam height 3 cm, sample height Hs
+# Hs(cm) delta_MCAMS err delta_pycorrect(H=beam height)
+   3.00000    0.60920    0.00112    0.48621
+   4.00000    0.64591    0.00162    0.48621
+   6.00000    0.65099    0.00098    0.48621
+  10.00000    0.65469    0.00146    0.48621

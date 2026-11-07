@@ -1,0 +1,20 @@
+Cylindrical sample, height 30 mm (y from -4 to 26), 2 layer(s), outer diameter 6.4 mm (axis vertical)
+ # name           r_in    r_out    thick  mu(1/mm) scat.frac  material y (mm)
+ 0 powder        0.000    3.000    6.000    0.2500      0.80  -4.000 to 0.000 (0.50)
+ 1 V             3.000    3.200    0.200    0.0730      0.50  full
+fill heights (mm): [ 4. 30.]  fullness: [0.5 1. ]
+same level of powder: True
+
+fullness  powder   wall   (fraction of the incident particles)
+  1.00   0.4938  0.0261
+  0.75   0.3700  0.0282
+  0.50   0.2473  0.0303
+  0.25   0.1242  0.0323
+
+half full: single 40222, multiple 16485 (29.1 % multiple)
+
+Slab sample 20 x 20 mm (y from -10 to 10), 3 layer(s), thickness 4 mm, angle beam/plane = 90 deg
+ # name         z_start     z_end    thick  mu(1/mm) scat.frac  material y (mm)
+ 0 Al             0.000     1.000    1.000    0.0100      1.00  full
+ 1 water          1.000     3.000    2.000    0.5600      1.00  -10.000 to -4.000 (0.00)
+ 2 Al             3.000     4.000    1.000    0.0100      1.00  full

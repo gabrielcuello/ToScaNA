@@ -1,0 +1,3 @@
+plane angle 90 deg: fraction interacting = 0.355, T(30) = 0.770, T(90) = 0.165, T(150) = 0.798
+plane angle 60 deg: fraction interacting = 0.398, T(30) = 0.795, T(90) = 0.642, T(150) = 0.688
+plane angle 30 deg: fraction interacting = 0.500, T(30) = 0.754, T(90) = 0.748, T(150) = 0.160

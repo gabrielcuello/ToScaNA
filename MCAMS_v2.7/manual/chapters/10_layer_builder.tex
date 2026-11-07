@@ -1,0 +1,101 @@
+\chapter{Preparing the layers from formula, density and cross sections}
+\label{ch:builder}
+
+\section{Purpose}
+
+The simulations need, for every layer, the label, the thickness, the total linear attenuation coefficient $\mu$ and the scatter fraction. The module
+\code{layer_builder.py} computes the last two from what is normally known about a material: its chemical formula, its density and its cross sections. Three small modules
+cooperate: \code{formula.py} reads the formula, \code{nuclear_data.py} provides atomic masses and (optionally) tabulated cross sections, and
+\code{layer_builder.py} does the calculation.
+
+\section{The calculation}
+
+\begin{enumerate}
+  \item The formula gives the number of atoms of each species in one \emph{formula unit} (for instance one H$_2$O molecule) and so the molar mass $M$ (g/mol).
+  \item The density $\rho$ (g/cm$^3$) gives the number of formula units per cm$^3$,
+        \begin{equation} n=\frac{\rho\,N_A}{M},\qquad N_A=6.02214076\times10^{23}\ \mathrm{mol}^{-1}. \end{equation}
+  \item The cross section of a formula unit is the sum of the cross sections of its atoms. The linear attenuation coefficients, in mm$^{-1}$, are
+        \begin{equation}
+          \mu_\mathrm{scat}=n\,\sigma_\mathrm{scat}\times10^{-24}\times0.1,\quad
+          \mu_\mathrm{abs}=n\,\sigma_\mathrm{abs}\times10^{-24}\times0.1,\quad
+          \mu=\mu_\mathrm{scat}+\mu_\mathrm{abs},
+        \end{equation}
+        with the cross sections in barn ($10^{-24}$~cm$^2$); the factor 0.1 converts cm$^{-1}$ into mm$^{-1}$.
+  \item The scatter fraction is $\sigma_\mathrm{scat}/(\sigma_\mathrm{scat}+\sigma_\mathrm{abs})$.
+\end{enumerate}
+
+\section{Writing the formula: the notation}
+
+Chemical formulas are read by \code{parse_formula}. The notation, which also covers isotopes, is summarised in Table~\ref{tab:notation}.
+
+\begin{table}[ht]
+  \centering\small
+  \begin{tabular}{@{}p{4.6cm}p{4.2cm}p{5.4cm}@{}}
+    \toprule \textbf{What} & \textbf{Write} & \textbf{Comment} \\ \midrule
+    Natural element & \code{Fe}, \code{H2O}, \code{NH3}, \code{Fe2O3Na2Li} & capital letter, optional lower-case letter; the number after the symbol is the number of atoms \\
+    Fractional amounts & \code{La0.7Sr0.3MnO3} & decimals are allowed \\
+    \textbf{Isotope} & \code{[2H]2O}, \code{[56Fe]2O3}, \code{[10B]4C}, \code{H2[18O]} & mass number and symbol \textbf{inside square brackets} \\
+    Deuterium, tritium & \code{D2O}, \code{T2O} & shorthands for \code{[2H]} and \code{[3H]} \\
+    Groups & \code{Ca(OH)2}, \code{Al2(SO4)3} & round parentheses, may be nested \\
+    Hydrates & \code{CuSO4*5H2O} & separator \code{*} (or the middle dot); the dot ``.'' is reserved for decimals \\
+    Mixture of isotopes & \code{[6Li]0.5[7Li]0.5F} & list each isotope with its amount \\ \bottomrule
+  \end{tabular}
+  \caption{Notation of chemical formulas.}
+  \label{tab:notation}
+\end{table}
+
+The brackets are the key of the proposal: a number placed \emph{before} a symbol would be ambiguous (\code{H22H} could mean H$_{22}$ and H, or H$_2$ and $^2$H).
+Inside brackets there is no doubt, and a bracket can never be confused with a number of atoms or with a group. A formula cannot start with a number, and
+the case of the letters matters (\code{CO} is carbon monoxide, \code{Co} is cobalt). Wrong formulas raise a \code{FormulaError} that points at the problem.
+The function returns a dictionary \code{{Species: number of atoms}}; a \code{Species} is a natural element or an isotope. In the dictionaries that you give to the other
+functions, a species is written like in the formula but without brackets: \code{"Fe"}, \code{"56Fe"}, \code{"D"} (or \code{"2H"}).
+
+\section{Where the cross sections come from}
+
+\begin{description}
+  \item[A. Your values for the whole formula unit:] \code{sigma_scat=..., sigma_abs=...}, in barn per formula unit.
+  \item[B. Your values per species:] \code{cross_sections={"Fe": (sigma_scat, sigma_abs), "D": (...)}}, in barn per atom, for some or all species.
+  \item[C. Tabulated values] for the species that you did not give in B (package \code{periodictable}, see below).
+\end{description}
+If \code{sigma_scat} and \code{sigma_abs} are given, A is used for everything and B must not be given. Otherwise every species uses B if present and C if not.
+Atomic masses come from \code{masses={"Fe": 55.845}} if given, otherwise from the tables.
+
+{\sloppy\textbf{Tabulated data.} If the package \code{periodictable} is installed, \code{AtomicData} (module \code{nuclear_data.py}) uses it for atomic masses of
+elements and isotopes and for the neutron cross sections (scattering = coherent + incoherent, and absorption) at the thermal velocity 2200~m/s
+(wavelength 1.798~\AA)~\cite{sears,periodictable}. With \code{wavelength_A=...} the \emph{tabulated} absorption is scaled with the $1/v$ law (proportional to the
+wavelength); this fails for strong resonances (Cd, Sm, Eu, Gd, \ldots). Your own values are never modified.
+Without the package there is a small built-in table of atomic weights (and of the masses of some isotopes), but \textbf{no table of cross sections} on purpose:
+a wrong number would silently give a wrong result; you then provide the values yourself, and a clear error message tells you how if you forget.
+To use another database, give \code{data=} an object with the methods \code{mass(species)} and \code{neutron_xs(species)}.\par}
+
+\section{Calling the functions}
+
+\begin{lstlisting}
+props = compute_layer_properties(label, thickness, formula, density,
+                                 sigma_scat=None, sigma_abs=None,
+                                 cross_sections=None, masses=None,
+                                 wavelength_A=None, data=None)
+layer = make_layer_tuple(...)          # same arguments; returns only the tuple
+\end{lstlisting}
+\code{compute_layer_properties} returns a \code{LayerProperties} with every intermediate value (molar mass, formula units per cm$^3$, $\mu_\mathrm{scat}$,
+$\mu_\mathrm{abs}$, $\mu$, scatter fraction, origin of the cross sections); \code{props.summary()} prints them and \code{props.as_tuple()} gives
+\code{(label, thickness, mu, scatter_fraction)}. \code{make_layer_tuple} returns directly that tuple, which can be put in the list of layers of any sample
+(Chapter~\ref{ch:sample}). The thickness is in mm and, for the first layer of a cylinder, it is the diameter.
+
+\pyexample{ex07_layer_builder}
+
+The result for water, $\mu=0.565$~mm$^{-1}$ ($5.65$~cm$^{-1}$), agrees with the well-known value of about 5.6~cm$^{-1}$ for thermal neutrons.
+The cross sections of heavy water and of aluminium in the example are illustrative.
+
+\section{Using tabulated values}
+
+With \code{periodictable} installed, no cross section needs to be given:
+\begin{lstlisting}
+iron = make_layer_tuple("Fe plate", 1.0, "Fe", 7.87)                    # all from tables
+fe57 = make_layer_tuple("57Fe foil", 0.1, "[57Fe]", 7.87)               # an isotope
+cold = make_layer_tuple("water", 2.0, "H2O", 1.0, wavelength_A=4.0)     # absorption at 4 Angstrom
+mixed = make_layer_tuple("D2O", 6.0, "D2O", 1.107,
+                         cross_sections={"D": (7.64, 0.000519)})        # D given, O from tables
+\end{lstlisting}
+\textbf{Note.} The adapter to \code{periodictable} was written from the documented interface of the package and tested here only against a stand-in object with the
+same attributes; the first time you use it, run \code{python layer_builder.py} to check that the tabulated values are found (Appendix~\ref{app:trouble}).

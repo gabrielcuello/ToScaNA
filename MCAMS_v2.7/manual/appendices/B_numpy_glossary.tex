@@ -1,0 +1,40 @@
+\chapter{NumPy functions used in the code}
+\label{app:numpy}
+
+The modules start with a short glossary of the NumPy functions they use. This appendix collects them \cite{numpy}. Arrays are tables of numbers; most operations
+act on all the elements at once (``vectorised''), which is why the code has almost no loops.
+
+\begin{longtable}{@{}p{4.6cm}p{10.2cm}@{}}
+\toprule \textbf{Function} & \textbf{What it does} \\ \midrule \endhead
+\code{np.array}, \code{np.asarray} & build an array from a list; convert to an array of floating-point numbers \\
+\code{np.atleast_2d(a)} & make a vector of shape (3,) into a table (1, 3); leave a table as it is \\
+\code{np.zeros}, \code{np.empty}, \code{np.full} & arrays filled with zeros, not initialised, or filled with a given value \\
+\code{np.arange(n)} & the integers $0,1,\ldots,n-1$ \\
+\code{np.linspace(a, b, n)} & $n$ equally spaced numbers from $a$ to $b$ \\
+\code{np.tile(a, (n, 1))} & repeat the row $a$ $n$ times \\
+\code{np.concatenate}, \code{np.column_stack}, \code{np.vstack} & join arrays one after the other, as columns, or as rows \\
+\code{np.broadcast_to(a, shape)} & repeat an array virtually to a larger shape without copying it \\
+\code{a[:, None]} & add an axis, e.g.\ (N,) $\to$ (N, 1), to combine with (1, L) into an (N, L) table (``broadcasting'') \\
+\code{np.cumsum(a, axis)} & running sum: $[1,2,3]\to[1,3,6]$ \\
+\code{np.diff(a)} & differences between neighbours \\
+\code{np.where(cond, a, b)} & element by element: $a$ where the condition is true, $b$ elsewhere \\
+\code{np.clip(a, lo, hi)} & limit the values to the interval $[lo, hi]$ (the limits may be arrays) \\
+\code{np.minimum}, \code{np.maximum} & element by element smaller / larger of two arrays \\
+\code{np.sort(a, axis=1)} & sort every row \\
+\code{np.searchsorted(edges, v)} & for each $v$, the position where it would be inserted in the sorted array \code{edges}: tells in which interval (layer, bin) $v$ falls \\
+\code{np.interp(x, xp, fp)} & linear interpolation of the curve $(xp, fp)$ at the points $x$ \\
+\code{np.bincount(idx, weights)} & sum of the \code{weights} of the elements with each integer value of \code{idx} (or count them): a fast ``sum by category'' \\
+\code{np.histogram(a, bins)} & count how many values fall in each bin \\
+\code{np.sqrt}, \code{np.exp}, \code{np.log} & square root, exponential and natural logarithm of every element \\
+\code{np.sin}, \code{np.cos}, \code{np.arccos}, \code{np.arctan2} & trigonometric functions (angles in radians) \\
+\code{np.radians}, \code{np.degrees} & convert between degrees and radians \\
+\code{np.hypot(a, b)} & $\sqrt{a^2+b^2}$, computed safely \\
+\code{np.cross(a, b)} & vector product of the vectors in the rows \\
+\code{np.linalg.norm(v, axis=1)} & length of every row vector \\
+\code{a @ b} & matrix product (rows times columns) \\
+\code{np.errstate(...)} & temporarily silence warnings (here: divisions by zero handled with \code{np.where}) \\
+\code{np.any}, \code{np.all}, \code{np.isfinite}, \code{np.isnan} & tests on the elements of arrays \\
+\code{np.random.default_rng}\allowbreak\code{(seed)}, \code{rng.uniform(a, b, size)} & random number generator (the seed makes the results repeatable); uniform random numbers in $[a,b)$ \\
+Boolean masks: \code{a[mask]}, \code{~mask}, \texttt{\&} & select the elements where the mask is true; ``not''; ``and'' \\
+\bottomrule
+\end{longtable}

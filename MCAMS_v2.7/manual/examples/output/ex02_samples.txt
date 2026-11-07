@@ -1,0 +1,13 @@
+Slab sample 20 x 20 mm (y from -10 to 10), 3 layer(s), thickness 3.5 mm, angle beam/plane = 60 deg
+ # name         z_start     z_end    thick  mu(1/mm) scat.frac  material y (mm)
+ 0 Al             0.000     2.000    2.000    0.0200      1.00  full
+ 1 Fe             2.000     3.000    1.000    0.2500      0.60  full
+ 2 Cu             3.000     3.500    0.500    0.3000      0.50  full
+
+Cylindrical sample, height 20 mm (y from -10 to 10), 3 layer(s), outer diameter 9 mm (axis vertical)
+ # name           r_in    r_out    thick  mu(1/mm) scat.frac  material y (mm)
+ 0 Fe            0.000    3.000    6.000    0.2500      0.60  full
+ 1 Al            3.000    4.000    1.000    0.0200      1.00  full
+ 2 Cu            4.000    4.500    0.500    0.3000      0.50  full
+
+outer radius of the cylinder: 4.5 mm
