@@ -368,10 +368,11 @@ def load_nxs(  # noqa: N802 (legacy API)
     nxs_path: str, ncell: int = 64
 ) -> tuple[dict[str, Any], NDArray[np.float64]]:
     """
-    Read one numor in Nexus format (legacy behavior).
+    Read one numor in NeXus format (old and current D4 formats).
 
-    Reads the HDF5 group ``entry0`` with h5py and builds a metadata dictionary
-    with the same keys as `readD4numorASCII` where they exist:
+    The file is read with the bundled reader `toscana.dataio.nexus` (formerly
+    ``nx_reader_D4.py``, version 2), and a metadata dictionary is built with
+    the same keys as `readD4numorASCII` where they exist:
 
     ========================  ==================================================
     key                       source in ``entry0`` (first element)
@@ -388,17 +389,19 @@ def load_nxs(  # noqa: N802 (legacy API)
     ``MonitorCnts``           ``monitor/monsum``
     ``CntTime (sec)``         ``time``
     ``TotalSteps``            ``data_scan/total_steps``
-    ``Theta_lue(deg)``        ``instrument/masked2theta_s/value``
-    ``Theta_des(deg)``        ``instrument/masked2theta_s/target_value``
+    ``Theta_lue(deg)``        ``instrument/masked2theta_s/value``; old format
+                              (no ``masked2theta_s``): ``instrument/2theta/value``
+    ``Theta_des(deg)``        the corresponding ``target_value``
     ``Omega(deg)``            ``instrument/omega/value``
     ========================  ==================================================
 
     Then every scanned variable (names in
     ``data_scan/scanned_variables/variables_names/property``, values in
     ``data_scan/scanned_variables/data``) is added with its first value; the
-    names ``TotalAcquisitionSpy`` and ``TotalCount`` are renamed ``TotalCnts``
-    (if both exist, the last one wins). The counts are
-    ``data_scan/detector_data/data[0]``, squeezed and reshaped to (9, ncell).
+    names ``TotalAcquisitionSpy`` (old format) and ``TotalCount`` (current
+    format) are renamed ``TotalCnts``. The counts are
+    ``data_scan/detector_data/data[0]``, squeezed and reshaped to (9, ncell);
+    the old format stores them as (1, 576, 1), the current one as (1, 1, 576).
 
     Parameters
     ----------
@@ -410,7 +413,7 @@ def load_nxs(  # noqa: N802 (legacy API)
     Returns
     -------
     metadata : dict
-        Metadata as above (text decoded from UTF-8; numbers are NumPy scalars).
+        Metadata as above (text as str; numbers are NumPy scalars).
     counts : numpy.ndarray of float64, shape (9, ncell)
         Raw counts (row = bank, column = cell).
 
@@ -418,71 +421,77 @@ def load_nxs(  # noqa: N802 (legacy API)
     ------
     ImportError
         If h5py is not installed.
-    FileNotFoundError, OSError
-        If the file cannot be opened as HDF5.
+    FileNotFoundError
+        If the file does not exist.
     KeyError
-        If one of the fields above is missing.
+        If one of the fields above is missing in both formats.
     ValueError
         If the counts cannot be reshaped to (9, ncell).
 
     Notes
     -----
-    Prints and logs nothing (unlike `readD4numorASCII`). If the file has no
-    ``TotalAcquisitionSpy``/``TotalCount`` scanned variable, ``TotalCnts`` is
-    absent and `getOneNumor` fails with ``KeyError``.
+    Prints and logs nothing (unlike `readD4numorASCII`).
+
+    Change (integration of the NeXus reader, 2026-11): the legacy code read
+    ``instrument/masked2theta_s``, which exists only in the current format,
+    so every old-format NeXus file failed with ``KeyError``. Checked on the
+    raw data of 2025-2026: for 5627 current-format numors the result is
+    identical (keys, types, values, counts) except that text fields lose
+    trailing spaces (the subtitle of 40 numors); for 3023 old-format numors,
+    which the legacy code could not read, angles (within 4e-7 deg), monitor,
+    time (within 2e-5 s), total counts and all cell counts agree with the
+    ASCII file of the same numor.
     """
     try:
-        import h5py  # type: ignore[import-untyped]
+        import h5py  # type: ignore[import-untyped]  # noqa: F401
     except Exception as exc:  # pragma: no cover
         raise ImportError("load_nxs requires h5py to be installed.") from exc
+    from .nexus import read_nexus
 
-    with h5py.File(nxs_path, "r") as nxs:
-        entry0 = nxs["entry0"]
+    raw = read_nexus(nxs_path).data  # every dataset, by path; text decoded
 
-        metadata: dict[str, Any] = {
-            "label": "d4 "
-            + entry0["user/name"][0].decode("utf-8")
-            + entry0["user/namelocalcontact"][0].decode("utf-8")
-            + entry0["start_time"][0].decode("utf-8"),
-            "user": entry0["user/name"][0].decode("utf-8"),
-            "LC": entry0["user/namelocalcontact"][0].decode("utf-8"),
-            "proposal": entry0["user/proposal"][0].decode("utf-8"),
-            "ndet": 9,
-            "ncell": ncell,
-            "RtrPower (MW)": 1,
-            "numor": str(entry0["run_number"][0]),
-            "subtitle": entry0["experiment_identifier"][0].decode("utf-8"),
-            "title": entry0["title"][0].decode("utf-8"),
-            "startTime": entry0["start_time"][0].decode("utf-8"),
-            "endTime": entry0["end_time"][0].decode("utf-8"),
-            "MonitorCnts": entry0["monitor/monsum"][0],
-            #"MonitorCnts": entry0["monitor/data"][0, 0, 0],
-            "CntTime (sec)": entry0["time"][0],
-            "TotalSteps": entry0["data_scan/total_steps"][0],
-            "Theta_lue(deg)": entry0["instrument/masked2theta_s/value"][0],
-            "Theta_des(deg)": entry0["instrument/masked2theta_s/target_value"][0],
-            # "Theta_lue(deg)": entry0["instrument/2theta/value"][0],
-            # "Theta_des(deg)": entry0["instrument/2theta/target_value"][0],
-            "Omega(deg)": entry0["instrument/omega/value"][0],
-            #"A1": entry0["instrument/A1/value"][0],
-        }
+    def first(path: str) -> Any:
+        return np.ravel(raw["entry0/" + path])[0]
 
-        for name, datum in zip(
-            entry0["data_scan/scanned_variables/variables_names/property"],
-            entry0["data_scan/scanned_variables/data"],
-        ):
-            decoded = name.decode("utf-8")
-            if decoded in ("TotalAcquisitionSpy", "TotalCount"):
-                decoded = "TotalCnts"
-            metadata[decoded] = datum[0]
+    def text(path: str) -> str:
+        return str(first(path))
 
-        counts_raw = entry0["data_scan/detector_data/data"][0]
-        counts = (
-            np.asarray(counts_raw)
-            .squeeze()
-            .reshape(metadata["ndet"], metadata["ncell"])
-        )
+    angle = (
+        "instrument/masked2theta_s"
+        if "entry0/instrument/masked2theta_s/value" in raw
+        else "instrument/2theta"
+    )
+    metadata: dict[str, Any] = {
+        "label": "d4 " + text("user/name") + text("user/namelocalcontact")
+        + text("start_time"),
+        "user": text("user/name"),
+        "LC": text("user/namelocalcontact"),
+        "proposal": text("user/proposal"),
+        "ndet": 9,
+        "ncell": ncell,
+        "RtrPower (MW)": 1,
+        "numor": str(first("run_number")),
+        "subtitle": text("experiment_identifier"),
+        "title": text("title"),
+        "startTime": text("start_time"),
+        "endTime": text("end_time"),
+        "MonitorCnts": first("monitor/monsum"),
+        "CntTime (sec)": first("time"),
+        "TotalSteps": first("data_scan/total_steps"),
+        "Theta_lue(deg)": first(angle + "/value"),
+        "Theta_des(deg)": first(angle + "/target_value"),
+        "Omega(deg)": first("instrument/omega/value"),
+    }
 
+    names = np.ravel(raw["entry0/data_scan/scanned_variables/variables_names/property"])
+    for name, datum in zip(names, raw["entry0/data_scan/scanned_variables/data"]):
+        decoded = str(name)
+        if decoded in ("TotalAcquisitionSpy", "TotalCount"):
+            decoded = "TotalCnts"
+        metadata[decoded] = datum[0]
+
+    counts_raw = raw["entry0/data_scan/detector_data/data"][0]
+    counts = np.asarray(counts_raw).squeeze().reshape(metadata["ndet"], metadata["ncell"])
     return metadata, counts.astype(np.float64, copy=False)
 
 

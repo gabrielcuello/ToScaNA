@@ -1,0 +1,76 @@
+\chapter{Installation and requirements}
+\label{ch:install}
+
+\section{MCAMS inside ToScaNA}
+
+Since November 2026 MCAMS is part of ToScaNA, as the subpackage
+\code{toscana.corrections.mcams}. The code is unchanged except that the modules
+import each other as a package (\code{from . import beam} instead of
+\code{import beam}), and that the default source of tabulated masses and cross
+sections is ToScaNA's isotope table (\code{nuclear_data.ToscanaData}), so that
+\code{periodictable} is no longer needed. Make ToScaNA importable (ToScaNA
+manual, chapter \emph{Installation}) and import the modules as
+\begin{lstlisting}[style=shell]
+from toscana.corrections.mcams.cylinder import create_cylindrical_sample
+from toscana.corrections.mcams import beam, slab
+\end{lstlisting}
+All the examples of this manual are written this way.
+
+\section{Requirements}
+
+\begin{itemize}
+  \item \textbf{Python} 3.10 or newer (as ToScaNA).
+  \item \textbf{NumPy} (tested with 2.4) for all the calculations.
+  \item \textbf{Matplotlib} (tested with 3.10) for the plots. It is only needed by the \code{plot_...}
+        functions and by the demonstrations at the end of the modules.
+  \item \textbf{periodictable} (optional): an alternative source of tabulated cross sections and masses,
+        used only with \code{data=AtomicData()} (Chapter~\ref{ch:builder}).
+\end{itemize}
+
+\section{Files and folders}
+
+\begin{lstlisting}[style=shell]
+toscana/corrections/mcams/
+    beam.py  sample_base.py  slab.py  disc.py  cylinder.py  sphere.py  sample_factory.py
+    transmission_vs_angle.py  multiple_scattering.py  transmission_by_layer.py
+    direct_attenuation.py  formula.py  nuclear_data.py  layer_builder.py  run_simulation.py
+toscana/tests/mcams_checks.py   (self-test, run by tests/test_mcams.py)
+toscana/docs/mcams/manual/      (this manual)
+\end{lstlisting}
+
+\section{Checking the installation}
+
+Every module has a short demonstration at its end:
+\begin{lstlisting}[style=shell]
+python -m toscana.corrections.mcams.slab          # flat cell, partially filled
+python -m toscana.corrections.mcams.cylinder      # can, partially filled
+python -m toscana.corrections.mcams.disc          # round cell; beam larger than the disc
+python -m toscana.corrections.mcams.sphere        # spherical container half filled
+python -m toscana.corrections.mcams.formula       # chemical formulas
+python -m toscana.corrections.mcams.layer_builder # layers from formulas
+\end{lstlisting}
+The self-test of the geometry compares the paths with a brute-force calculation and the interaction rates
+with exact results; from the ToScaNA folder:
+\begin{lstlisting}[style=shell]
+python tests/mcams_checks.py
+...
+ALL PASSED
+\end{lstlisting}
+
+\section{Use in a Jupyter notebook}
+
+Two points deserve attention in notebooks:
+\begin{enumerate}
+  \item Python imports a module only once per session. If you replace a file by a newer version, the notebook
+        keeps using the old one until the \textbf{kernel is restarted} (or the module is reloaded with
+        \code{importlib.reload}). A message such as \code{TypeError: create_slab_sample() got an unexpected keyword argument ...}
+        usually means that an old version is still loaded (see Appendix~\ref{app:trouble}).
+  \item Cells of a notebook can be run in any order. After changing the sample or the beam, run again the cells that depend on them.
+\end{enumerate}
+
+\section{Reproducibility}
+
+All the functions that use random numbers accept the argument \code{rng}, which can be an integer
+(a seed) or a NumPy generator created with \code{np.random.default_rng(seed)}. With the same seed the
+results are identical from one run to the next. Without it, every run gives slightly different
+results, as expected from a Monte Carlo method.

@@ -81,9 +81,22 @@ real-space correlation functions:
     statistical error bars (Chapter~\ref{ch:realspace}).
 \end{enumerate}
 
-\noindent The corrections for attenuation, multiple scattering, container
-and environment are computed by the external program CORRECT; ToScaNA
-prepares its input files.
+\noindent Since November 2026 ToScaNA also contains:
+\begin{itemize}
+  \item \textbf{pycorrect}, a Python translation of CORRECT 2.24
+    (Paalman \& Pings attenuation, Blech \& Averbach multiple scattering,
+    Placzek, vanadium normalisation), which runs the usual \code{.com} files;
+  \item \textbf{MCAMS}, a Monte Carlo code for attenuation and multiple
+    scattering in cylinders, annuli, slabs, discs and spheres, used to check
+    and complement the analytical corrections
+    (Chapter~\ref{ch:corrections});
+  \item \textbf{d4numor}, a survey tool for sets of numors (variables,
+    averages, detector movement, preset calculator), and the NeXus reader
+    that ToScaNA uses for both the old and the current D4 formats
+    (Section~\ref{sec:d4numor}).
+\end{itemize}
+These three have their own manuals in \code{docs/pycorrect},
+\code{docs/mcams} and \code{docs/d4numor}.
 
 \section{How this manual is organised}
 
@@ -133,7 +146,9 @@ NumPy & everything & tested with 2.4.3 \\
 SciPy & everything & integration, peak finding, special functions; tested with 1.17.1 \\
 matplotlib & plots & imported only by plotting functions \\
 lmfit & Ni calibration & tested with 1.3.4 \\
-h5py & NeXus raw data & imported only by \code{load_nxs} \\
+h5py & NeXus raw data & imported only by \code{load_nxs} and \code{d4numor}; tested with 3.15.1 \\
+pandas & \code{d4numor} tables & optional, only \code{NumorSet.to_dataframe} \\
+periodictable & --- & no longer needed: MCAMS uses ToScaNA's isotope table \\
 \bottomrule
 \end{longtable}
 
@@ -171,7 +186,7 @@ and takes about 35 seconds:
 \begin{lstlisting}
 python /Users/cuello/AI-lab/ToScaNA-pilot/tests/run_tests.py
 ...
-Ran 95 tests in 35.0s
+Ran 109 tests in 80 s
 OK
 \end{lstlisting}
 
@@ -218,9 +233,10 @@ A typical D4 experiment is analysed in this order.
     calibrated $\lambda$ and $2\theta_0$ (Chapter~\ref{ch:d4creg}).
   \item \textbf{Describe the experiment} in a sample-description file and
     build a \code{Measurement} (Chapter~\ref{ch:sample}).
-  \item \textbf{Correct} with CORRECT: background and container
-    subtraction, attenuation and multiple scattering, normalisation to
-    vanadium; ToScaNA writes the command file.
+  \item \textbf{Correct} with pycorrect (or the Fortran CORRECT):
+    background and container subtraction, attenuation and multiple
+    scattering, normalisation to vanadium; MCAMS checks the factors
+    (Chapter~\ref{ch:corrections}).
   \item \textbf{Obtain $S(Q)$}: subtract the self scattering, accounting for
     inelasticity (Chapter~\ref{ch:models}).
   \item \textbf{Transform to real space} and compute coordination numbers,
@@ -240,7 +256,7 @@ The regrouping is controlled by a text file read by
 \begin{lstlisting}[language=toscanapar]
 # d4creg parameters for the vanadium rod
 <rdp> rawdata/            # directory of the raw numors
-<fmt> Nexus               # Nexus, or anything else for ILL ASCII
+<fmt> Nexus               # Nexus (old or current format), anything else: ILL ASCII
 <eff> effd4c.eff          # efficiencies ("ones" = no correction)
 <dec> dec.dec             # bank shifts ("zeros", "manual")
 <tau> 2.4e-6 7.0e-6       # dead times: monitor, detector (s)
@@ -558,7 +574,8 @@ An unknown name raises \code{ValueError}.
 
 \section{Input for CORRECT}
 
-Two functions write CORRECT command files:
+The command files can be run by the Fortran CORRECT or, inside ToScaNA, by
+pycorrect (Chapter~\ref{ch:corrections}). Two functions write them:
 \begin{itemize}
   \item \code{generate_com(template, name, rsample, density, ...)} fills the
     placeholders \texttt{\{pyfname\}}, \texttt{\{pyradius\_cm\}},
@@ -576,6 +593,82 @@ Two functions write CORRECT command files:
     \code{TempK}, \ldots), so such an object must be built by hand; check
     the units expected by CORRECT for the density.
 \end{itemize}
+
+% =====================================================================
+\chapter{Corrections: pycorrect and MCAMS}\label{ch:corrections}
+% =====================================================================
+
+\section{pycorrect: CORRECT in Python}
+
+\code{toscana.corrections.pycorrect} is a line-by-line translation of
+CORRECT 2.24 (M.A.~Howe, R.L.~McGreevy, P.~Zetterstr\"om). It reads the same
+command files, so an existing \code{.com} file runs unchanged, and it reads
+the \code{.adat}/\code{.qdat} files written by \code{d4creg}. From the folder
+of the data:
+\begin{lstlisting}
+python -m toscana.corrections.pycorrect run.com     # without a file: interactive prompt
+\end{lstlisting}
+or from Python:
+\begin{lstlisting}[language=Python]
+import os
+from toscana.corrections.pycorrect import Correct
+os.chdir("my_data_folder")              # file names in .com files are relative
+c = Correct(verbose=False, ask=False)
+c.run_file("run.com")                   # writes the output file of the .com
+r = c.results[0]                        # dict: theta, dcs, err, factors ...
+\end{lstlisting}
+The result dictionary contains, besides the differential cross section
+\code{dcs} and its error, every factor used: Paalman \& Pings factors
+\code{assch}, \code{acsch}, \code{acch}, \ldots, the multiple-scattering
+ratios \code{delta_sa}, \code{delta_va}, the Placzek correction. Its manual
+(\code{docs/pycorrect/manual}) describes the physics, the command language
+and the correspondence with the Fortran routines.
+
+\warn{pycorrect works in \textbf{cm} and cm$^{-1}$, as CORRECT; ToScaNA and
+MCAMS work in mm. In \code{.com} files, keep file names relative to the data
+folder: in the command language \code{/} starts a qualifier, so an absolute
+path containing for instance \code{/T...} is cut there.}
+
+\section{MCAMS: Monte Carlo attenuation and multiple scattering}
+
+\code{toscana.corrections.mcams} simulates neutron paths in layered samples
+(sample, can, furnace shields; cylinder, annulus, slab, disc, sphere;
+partially filled containers; beams narrower or wider than the sample) and
+gives single-scattering attenuation factors, scattering orders and their
+angular dependence. Its manual (\code{docs/mcams/manual}, 146 pages) explains
+the geometry, the physics, the validation and all the functions. Layers can
+be built from a chemical formula and a density; the cross sections then come
+from ToScaNA's isotope table:
+\begin{lstlisting}[language=Python]
+from toscana.corrections.mcams.layer_builder import compute_layer_properties
+fe = compute_layer_properties("Fe plate", 1.0, "Fe", 7.87)   # thickness mm, g/cm3
+print(fe.summary())        # sigma_scat 11.62 b, sigma_abs 2.56 b, mu 0.12034/mm
+\end{lstlisting}
+
+\section{Comparing the two: the bridge}
+
+\code{toscana.corrections.bridge} computes with MCAMS the same quantities as
+a pycorrect run, from the pycorrect state, converting the units:
+\begin{lstlisting}[language=Python]
+from toscana.corrections import bridge
+mc = bridge.mcams_factors_like_pycorrect(c.st, r["theta"],
+                                         n_particles=300_000, n_batches=8)
+# mc["assch"], mc["delta_sa"], ... with mc["assch_err"], ... (MC errors)
+\end{lstlisting}
+The systematic comparison is in \code{docs/validation} (scripts and a
+28-page report). Its main conclusions:
+\begin{itemize}
+  \item attenuation factors agree within the Monte Carlo error (0.1--0.5\,\%)
+    for a beam wider than the sample;
+  \item with a beam narrower than the sample, CORRECT is about 1\,\% too high;
+  \item CORRECT interpolates the furnace factors with a parabola through
+    $0^\circ$, $90^\circ$, $180^\circ$ and misses dips of up to 9\,\%;
+  \item the Blech \& Averbach double-scattering table is confirmed, but the
+    empirical series used by CORRECT for the higher orders is far too low
+    (for the Ni example $\delta = 0.486$ against 0.58--0.63 with MCAMS).
+\end{itemize}
+When these effects matter (strongly scattering samples, furnaces, narrow
+beams), use the MCAMS factors.
 
 % =====================================================================
 \chapter{Normalisation models and data operations}\label{ch:models}
@@ -764,13 +857,35 @@ negative value.
     for a given wavelength.
 \end{itemize}
 
+\section{Surveying numors: d4numor}\label{sec:d4numor}
+
+\code{toscana.d4numor} lists and averages the variables of a set of numors
+(temperatures, monitor, counts, angles, \ldots), shows the detector movement
+and computes presets. In Python:
+\begin{lstlisting}[language=Python]
+from toscana import d4numor as d4
+ns = d4.NumorSet.from_directory("rawdata", "454600-454620")
+ns.summary()                                   # run overview
+ns.print_table(["RegTemp", "Monitor"])         # weighted averages
+\end{lstlisting}
+or on the command line: \code{python -m toscana.d4numor summary -d rawdata -n 454600-454620}.
+The manual is \code{docs/d4numor/MANUAL.md}, with an example notebook.
+
+The NeXus files are read by \code{toscana.dataio.nexus} (formerly
+\code{nx_reader_D4.py}, version 2), which finds every quantity by name and so
+reads both the old format (until 2025: 14 fixed rows in the scan table,
+detector data of shape (1, 576, 1)) and the current one (named rows,
+detector data (1, 1, 576), motor \code{masked2theta_s}). \code{d4creg} uses the
+same reader. To see where each quantity of a file comes from:
+\code{python -m toscana.dataio.nexus FILE.nxs}.
+
 % =====================================================================
 \chapter{Tests, version control and maintenance}\label{ch:maintenance}
 % =====================================================================
 
 \section{Tests}
 
-\code{python tests/run_tests.py} runs the 95 tests in about 35 seconds and
+\code{python tests/run_tests.py} runs the 109 tests in about 80 seconds and
 ends with \code{OK} when everything works. Run it after any change to the
 code. Appendix~\ref{app:tests} explains what each test checks and how to add
 one.
@@ -815,6 +930,9 @@ $g(r)$ clearly non-zero at low $r$ & Wrong $\rho$, wrong normalisation or self-s
 ``The container V is not available'' & Only with versions before \code{ece015d}: end the line with a comment, or update. With the current version the material is really not in the accepted list. \\
 Empty figure saved & Old versions saved after \code{show()}; fixed (\st{C22}). \\
 Results differ from older analyses & See the table of changes in Section~\ref{sec:migration}. \\
+\code{KeyError} reading an old NeXus file (before the integration) & The old \code{load_nxs} read only the current format; update. \\
+\code{ModuleNotFoundError: No module named 'beam'} (or \code{pycorrect}, \code{nx_reader_D4}) & A script for the stand-alone versions: import from \code{toscana.corrections.mcams}, \code{toscana.corrections.pycorrect}, \code{toscana.dataio.nexus}. \\
+pycorrect cannot find a file whose path contains \code{/T}, \code{/D}, \ldots & Use names relative to the data folder in the \code{.com} file. \\
 \bottomrule
 \end{longtable}
 

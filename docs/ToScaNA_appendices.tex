@@ -148,6 +148,8 @@ Commit & Content \\
 \tn{2b48c8a} & User manual. \\
 \tn{5cbaee8} & Docstrings for every module, class and function (documentation only). \\
 \tn{ece015d} & Splitting of cells in \code{getDiffA}; parser of the sample-description file. \\
+\tn{da86b8b} & D4Numor, MCAMS 2.7, pycorrect and the validation study, as received. \\
+(next) & Their integration into the package (Section~\ref{sec:integration}). \\
 \bottomrule
 \end{longtable}
 
@@ -735,6 +737,77 @@ deprecated aliases. Other Spanish names in the same module
 \end{itemize}
 
 % ---------------------------------------------------------------------
+\tssec{Integration of D4Numor, pycorrect and MCAMS}\label{sec:integration}
+
+In November 2026 four folders added to the project were integrated into the
+package, on the git branch \code{integrate/new-modules}. Commit
+\code{da86b8b} records them exactly as received; the next commits move them
+with \code{git mv}, so that \code{git log --follow} shows the history of
+every file.
+
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.38\textwidth} >{\raggedright\arraybackslash}p{0.56\textwidth}@{}}
+\toprule
+Received & Now \\
+\midrule\endhead
+\code{D4Numor/nx_reader_D4.py} (NeXus reader v2) & \code{toscana.dataio.nexus} \\
+\code{D4Numor/d4numor.py} & \code{toscana.d4numor} (\code{numorset.py}, \code{python -m toscana.d4numor}) \\
+\code{pycorrect/pycorrect/} (CORRECT 2.24 in Python) & \code{toscana.corrections.pycorrect} (\code{python -m toscana.corrections.pycorrect}) \\
+\code{MCAMS_v2.7/*.py} & \code{toscana.corrections.mcams} \\
+\code{pycorrect_vs_mcams/pyc_mcams_bridge.py} & \code{toscana.corrections.bridge} \\
+tests of pycorrect and MCAMS & \code{tests/test_pycorrect.py}, \code{tests/mcams_checks.py} (+ wrapper \code{test_mcams.py}) \\
+manuals, examples, validation study & \code{docs/d4numor}, \code{docs/pycorrect}, \code{docs/mcams}, \code{docs/validation} \\
+\bottomrule
+\end{longtable}
+
+\paragraph{What changed in the code.}
+\begin{itemize}
+  \item \textbf{Imports only}, for all MCAMS and pycorrect modules and the
+    NeXus reader: MCAMS modules imported each other as top-level modules
+    (\code{import beam}), the bridge and the scripts found the packages
+    through \code{sys.path}. Checked automatically: with the import
+    statements removed, every moved module is identical to the version
+    received, except the bridge (path set-up removed) and
+    \code{d4numor.get_reader}.
+  \item \code{d4numor.get_reader} returns the bundled reader
+    (\code{reader_dir} still loads another \code{nx_reader_D4.py}).
+  \item \code{dataio.acquisition.load_nxs} \newbeh{} reads the file with the
+    bundled reader. The legacy version read the motor
+    \code{masked2theta_s}, which exists only in the current format, so it
+    failed on every old-format NeXus file. Checked on the raw data of
+    2025--2026: for the 5627 current-format numors the result is identical
+    (keys, types, values, counts) apart from trailing spaces removed from
+    40 subtitles; for the 3023 old-format numors, which have an ASCII twin,
+    angles (within $4\times10^{-7}$ deg), monitor, time (within
+    $2\times10^{-5}$\,s, the file stores it in single precision), total
+    counts and all 576 cell counts agree with the ASCII file. A complete
+    \code{d4creg} regrouping of 21 numors gives the same diffractogram from
+    ASCII and from NeXus within $4\times10^{-7}$ relative.
+  \item MCAMS takes tabulated masses and cross sections from ToScaNA's
+    isotope table (\code{nuclear_data.ToscanaData}, default of
+    \code{layer_builder}) instead of the optional package
+    \code{periodictable}, which is no longer needed (\code{AtomicData}
+    remains available). Effect: masses in the 5th significant figure (water
+    18.0153 instead of 18.0150\,g/mol, $\mu$ changes by $2\times10^{-5}$);
+    the recorded output of MCAMS example 7 was regenerated.
+  \item pycorrect's round-trip test now uses file names relative to its
+    temporary folder: on macOS the temporary path contains \code{/T}, which
+    the CORRECT command language reads as a qualifier.
+\end{itemize}
+
+\paragraph{Validation of the integration.}
+\begin{itemize}
+  \item The test suites of pycorrect (5 tests) and MCAMS (all checks of its
+    self-test) pass inside ToScaNA, with the ToScaNA tests: 109 in all.
+  \item pycorrect run as \code{python -m toscana.corrections.pycorrect} on its
+    D4 example writes a file byte-identical to the recorded one.
+  \item The 18 examples of the MCAMS manual give the recorded output (except
+    the two lines reporting computing time in example 9, and example 7
+    regenerated for the masses above).
+  \item The three bundled LaTeX documents compile (MCAMS manual 146 pages,
+    pycorrect manual 29, validation report 28).
+\end{itemize}
+
+% ---------------------------------------------------------------------
 \tssec{What changes for the user}\label{sec:migration}
 
 \begin{longtable}{@{}p{0.36\textwidth} p{0.58\textwidth}@{}}
@@ -757,6 +830,9 @@ Free cross sections & per element (large change for H, D) \\
 Ni calibration & weighted fit, lattice 3.52\,\AA{} by default, \code{lattice=} argument \\
 Regrouping with a step $>0.125^\circ$ & cells split by their overlap (results change; default step unchanged) \\
 Sample-description file & comments optional, any spacing \\
+\code{import nx_reader_D4}, \code{import d4numor} & \code{toscana.dataio.nexus}, \code{toscana.d4numor} \\
+\code{import pycorrect}, MCAMS \code{import beam}, \code{pyc_mcams_bridge} & \code{toscana.corrections.pycorrect}, \code{toscana.corrections.mcams.beam}, \code{toscana.corrections.bridge} \\
+Old-format NeXus files & readable by \code{load_nxs} and \code{d4creg} \\
 Silent prints on bad input & \code{ValueError} (unknown isotope, invalid \code{cut}, $Q_\mathrm{max}\le0$, invalid window or weights, negative dead-time factor) \\
 \bottomrule
 \end{longtable}
@@ -841,6 +917,15 @@ Silent prints on bad input & \code{ValueError} (unknown isotope, invalid \code{c
     terminal.
 \end{itemize}
 
+\paragraph{From the pycorrect--MCAMS validation (docs/validation).} CORRECT's
+empirical series for multiple scattering beyond second order is far too low
+($\delta = 0.486$ against 0.58--0.63 with MCAMS for the Ni example); it
+ignores the angular dependence of $\delta$ ($\pm3.5$\,\%) and the sample
+height outside the beam; its parabolic interpolation of the furnace factors
+misses dips of up to 9\,\%; with a narrow beam it is about 1\,\% too high.
+The next step of the integration is a workflow in which MCAMS factors can
+replace these approximations.
+
 \paragraph{Engineering.} A \code{pyproject.toml} so that the package
 installs as \code{toscana}; logging instead of \code{print}; output and log
 paths as explicit arguments instead of fixed relative paths
@@ -917,6 +1002,9 @@ File & Role \\
 \code{test_line_shapes_ops.py} & Line shapes with errors, weighted sums, fitting ranges. \\
 \code{test_physical_choices.py} & Annulus volume, free cross sections, sigmoid, $Q_0$, weighted Ni fit. \\
 \code{test_misc.py} & Isotopes, data files, Ni calibration, \code{showTable}, project layout, text encoding. \\
+\code{test_integration.py} & NeXus reading in both formats, d4numor, pycorrect command line, MCAMS nuclear data, bridge. \\
+\code{test_pycorrect.py} & pycorrect's own tests (Paalman \& Pings vs brute force, multiple-scattering limits, parser, round trip of the whole correction chain, flat plate), with a \code{unittest} wrapper. \\
+\code{mcams_checks.py}, \code{test_mcams.py} & MCAMS's own self-test (paths vs brute force, exact interaction rates, direct method vs Monte Carlo, all geometries), run unchanged in a separate process by the wrapper. \\
 \bottomrule
 \end{longtable}
 
@@ -1110,6 +1198,18 @@ prefix, grouped by test class.
 \tn{old\_\allowbreak{}package\_\allowbreak{}names\_\allowbreak{}still\_\allowbreak{}work\_\allowbreak{}with\_\allowbreak{}warning} & \code{toscana.math}/\code{toscana.io} return the same modules as \code{numerics}/\code{dataio}, with warnings. \\
 \multicolumn{2}{@{}l}{\textit{TestSourceHygiene}} \\
 \tn{no\_\allowbreak{}mojibake} & No doubly-encoded characters in any source file (C23). \\
+\bottomrule
+\end{longtable}
+
+\tssub*{\texttt{test\_integration.py}}
+\begin{longtable}{@{}p{0.36\textwidth} p{0.58\textwidth}@{}}
+\toprule Test & What is checked \\ \midrule\endhead
+\tn{both\_\allowbreak{}formats} & Small NeXus files written in the old and the current layout are read by \code{load_nxs}: counts, angles, monitor, total counts, numor, subtitle. \\
+\tn{real\_\allowbreak{}pairs\_\allowbreak{}ascii\_\allowbreak{}vs\_\allowbreak{}nexus} & On the real data (if the folder exists; variable \code{TOSCANA_RAWDATA}): ASCII and NeXus versions of the same numors agree. \\
+\tn{uses\_\allowbreak{}bundled\_\allowbreak{}reader}, \tn{command\_\allowbreak{}line\_\allowbreak{}starts} & d4numor uses \code{toscana.dataio.nexus}; \code{python -m toscana.d4numor --help} works. \\
+\tn{d4\_\allowbreak{}example\_\allowbreak{}reproduces\_\allowbreak{}recorded\_\allowbreak{}output} & \code{python -m toscana.corrections.pycorrect d4_example.com} writes a file byte-identical to the recorded one. \\
+\tn{toscana\_\allowbreak{}table\_\allowbreak{}backend}, \tn{layer\_\allowbreak{}builder\_\allowbreak{}default\_\allowbreak{}is\_\allowbreak{}toscana\_\allowbreak{}table} & MCAMS gets masses and cross sections from ToScaNA's table (D $\to$ H2, [56Fe] $\to$ Fe56, missing data raise). \\
+\tn{units\_\allowbreak{}and\_\allowbreak{}imports} & The bridge imports and converts cm $\leftrightarrow$ mm. \\
 \bottomrule
 \end{longtable}
 
@@ -1829,6 +1929,60 @@ raises \code{RuntimeError} otherwise).
 \code{getConcentrations}, \code{getNofAtoms} (from \code{physics.properties})
 and \code{extractAttr}, \code{extractDict} (from \code{utils.dicts}) for
 compatibility.
+
+% ---------------------------------------------------------------------
+\tssec{Integrated packages}
+
+These packages have their own manuals, which document every function; the
+entries below say what each module is for. All docstrings are available
+with \code{help()}.
+
+\tssub{\texttt{dataio.nexus} --- NeXus reader (formerly \texttt{nx\_reader\_D4.py} v2)}
+\code{read_nexus(path)} returns a \code{NeXusData} object with every dataset
+of the file by path (\code{.data}), the quantities of D4 found by name with
+their source (\code{.sources}) and the missing ones (\code{.missing}),
+detector data (\code{.detdata}), and the format (\code{.format}). Also
+\code{check_file}, \code{list_datasets}, \code{extract_variable},
+\code{extract_multiple_variables}, \code{analyse_angular_motion},
+\code{get_preset}, \code{getReactorCycle}. The tables \code{FIELDS} and
+\code{MOTORS} at the top of the module list where each quantity is looked
+for: add a path there if the format changes again. Manual:
+\code{docs/d4numor/MANUAL.md}, section 12.
+
+\tssub{\texttt{d4numor} --- survey of numor sets}
+\code{NumorSet.from_directory(dir, numors)} or \code{from_files}; methods
+\code{summary}, \code{list_variables}, \code{print_table},
+\code{plot}, \code{plot_binary}, \code{motion_summary}, \code{motion_table},
+\code{preset}, \code{export_csv}, \code{to_dataframe}; functions
+\code{parse_numor_list}, \code{numor_info}, \code{main} (command line).
+Manual: \code{docs/d4numor/MANUAL.md}.
+
+\tssub{\texttt{corrections.pycorrect} --- CORRECT 2.24}
+\code{correct} (main program: \code{Correct}, \code{run_file},
+\code{interactive}, \code{main}), \code{correct_2axis} (reactor diffractometer:
+\code{absor}, \code{smooth_vanadium}, \code{placzek}, \code{correct_2axis}),
+\code{correct_tof}, \code{ndplib} (\code{atcors}: Paalman \& Pings factors;
+\code{mscat}, \code{mulscs}, \code{h2el}: multiple scattering), \code{routines}
+(\code{plate}, \code{polyfit}), \code{fileio}, \code{parse_line},
+\code{state}, \code{harwell}; data files \code{xsect.dat},
+\code{doublescattering.dat}. Units: cm. Manual and Fortran correspondence:
+\code{docs/pycorrect}.
+
+\tssub{\texttt{corrections.mcams} --- Monte Carlo attenuation and multiple scattering}
+Geometry: \code{beam}, \code{sample_base}, \code{slab}, \code{cylinder},
+\code{disc}, \code{sphere}, \code{sample_factory}; simulation:
+\code{multiple_scattering}, \code{transmission_vs_angle},
+\code{transmission_by_layer}, \code{direct_attenuation}; input:
+\code{formula}, \code{nuclear_data} (\code{ToscanaData}, default;
+\code{AtomicData}, periodictable), \code{layer_builder}; \code{run_simulation}.
+Units: mm. Manual with API reference (its Appendix A): \code{docs/mcams/manual}.
+
+\tssub{\texttt{corrections.bridge}}
+\code{mcams_factors_like_pycorrect(state, theta, n_particles, n_batches)}:
+all the factors of a pycorrect run computed with MCAMS (with Monte Carlo
+errors); \code{mc_attenuation_factors}, \code{mc_scattering_orders},
+\code{mc_delta}, \code{cylinder_layers_from_pycorrect}; unit conversions
+\code{cm_to_mm}, \code{per_cm_to_per_mm}. Study: \code{docs/validation}.
 
 % ---------------------------------------------------------------------
 \tssec{Top level: \texttt{\_\_init\_\_} and \texttt{\_aliases}}
