@@ -13,10 +13,11 @@ Public functions
 d4creg
     The full regrouping of a list of numors described by ``runInfo``; writes the
     ``.reg``, ``.adat`` and ``.qdat`` files and renames the log file.
-build_state, run_correction, structure_factor, save_structure_factor
-    (module ``correction``) From the regrouped ``.adat`` files and a
-    ``Measurement`` to the corrected cross section with pycorrect (optionally
-    MCAMS factors) and to S(Q), ready for ``sineFT``.
+run_correction, read_regrouped, structure_factor, save_structure_factor, build_state
+    (module ``correction``) From the regrouped ``.adat``/``.qdat`` files and a
+    ``Measurement`` to the corrected cross section and to S(Q), ready for
+    ``sineFT``: ToScaNA's Paalman & Pings chain with MCAMS factors (default,
+    any set of concentric cylinders, absorber) or CORRECT 2.24 (pycorrect).
 
 Conventions
 -----------
@@ -29,6 +30,7 @@ from .correction import (
     CorrectionResult,
     build_state,
     material_properties,
+    read_regrouped,
     run_correction,
     save_structure_factor,
     structure_factor,
@@ -41,6 +43,7 @@ __all__ = [
     "build_state",
     "d4creg",
     "material_properties",
+    "read_regrouped",
     "run_correction",
     "save_structure_factor",
     "structure_factor",

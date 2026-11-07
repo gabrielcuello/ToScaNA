@@ -372,6 +372,21 @@ class Measurement:
         self.File = inputPar["<SaFile>"][1].strip()
         self.absFile = inputPar["<AbFile>"][1].strip()
 
+        # Extra concentric layers of <LayNN> tags (sorted by tag): dicts with
+        # name, role, material, inner_diam, outer_diam, height (mm). Used by
+        # toscana.corrections.setup.setups_from_measurement.
+        self.extra_layers = [
+            {
+                "name": inputPar[key][1],
+                "role": inputPar[key][2],
+                "material": inputPar[key][3],
+                "inner_diam": float(inputPar[key][4]),
+                "outer_diam": float(inputPar[key][5]),
+                "height": float(inputPar[key][6]),
+            }
+            for key in sorted(k for k in inputPar if k.startswith("<Lay"))
+        ]
+
         self.Data: NDArray[np.float64] = read_3col(self.File)
         self.envData: NDArray[np.float64] = read_3col(self.envFile)
         self.conData: NDArray[np.float64] = read_3col(self.conFile)

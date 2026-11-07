@@ -4,6 +4,14 @@ normalisation of neutron diffraction data.
 
 Subpackages and modules (not imported automatically; import what you need)
 -----------------------------------------------------------------------
+setup
+    Description of a set-up as concentric cylinders (``CylinderSetup``,
+    ``setups_from_measurement``, materials), exact transmissions and atoms
+    per beam area.
+factors
+    ``compute_factors``: Paalman & Pings factors A_b,C, multiple scattering
+    δ_C and transmissions T_C of a set-up with MCAMS (or pycorrect);
+    ``FactorSet`` (save on the angle or Q scale), ``load_factors``.
 pycorrect
     Python translation of CORRECT 2.24 (M.A. Howe, R.L. McGreevy,
     P. Zetterstrom): Paalman & Pings attenuation, Blech & Averbach multiple

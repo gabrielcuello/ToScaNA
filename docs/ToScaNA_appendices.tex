@@ -150,7 +150,8 @@ Commit & Content \\
 \tn{ece015d} & Splitting of cells in \code{getDiffA}; parser of the sample-description file. \\
 \tn{da86b8b} & D4Numor, MCAMS 2.7, pycorrect and the validation study, as received. \\
 \tn{91ee4bc} & Their integration into the package (Section~\ref{sec:integration}). \\
-(next) & Correction workflow: Measurement $\to$ pycorrect (MCAMS) $\to$ S(Q). \\
+\tn{26947d6} & Correction workflow: Measurement $\to$ pycorrect (MCAMS) $\to$ S(Q). \\
+(next) & MCAMS default: general Paalman \& Pings chain, \code{<LayNN>} layers, absorber, \code{.qdat} input, factor files. \\
 \bottomrule
 \end{longtable}
 
@@ -1032,7 +1033,8 @@ File & Role \\
 \code{test_physical_choices.py} & Annulus volume, free cross sections, sigmoid, $Q_0$, weighted Ni fit. \\
 \code{test_misc.py} & Isotopes, data files, Ni calibration, \code{showTable}, project layout, text encoding. \\
 \code{test_integration.py} & NeXus reading in both formats, d4numor, pycorrect command line, MCAMS nuclear data, bridge. \\
-\code{test_workflow_correction.py}, \code{synthetic_d4.py} & The correction workflow on a synthetic experiment with known S(Q) (\code{synthetic_d4.make_experiment}). \\
+\code{test_workflow_correction.py}, \code{synthetic_d4.py} & The pycorrect method on a synthetic experiment with known S(Q) (\code{synthetic_d4.make_experiment}). \\
+\code{test_correction_mcams.py} & The MCAMS method: hollow sample, can with a gap, furnace and shield, absorber, \code{.qdat} sample, built forward with MCAMS factors and recovered to $10^{-7}$; identity with CORRECT given CORRECT's factors; \code{<LayNN>} parsing; transmissions; factor files on both scales; pycorrect's limits. \\
 \code{test_pycorrect.py} & pycorrect's own tests (Paalman \& Pings vs brute force, multiple-scattering limits, parser, round trip of the whole correction chain, flat plate), with a \code{unittest} wrapper. \\
 \code{mcams_checks.py}, \code{test_mcams.py} & MCAMS's own self-test (paths vs brute force, exact interaction rates, direct method vs Monte Carlo, all geometries), run unchanged in a separate process by the wrapper. \\
 \bottomrule
@@ -2032,16 +2034,45 @@ Units: mm. Manual with API reference (its Appendix A): \code{docs/mcams/manual}.
 
 \tssub{\texttt{workflows.correction} --- from \texttt{.adat} files to S(Q)}
 \sloppy
-\code{MATERIALS}: container/furnace materials (composition, density g/cm$^3$).
-\code{material_properties(material)} $\to$ (atomic density, $\sigma_s$,
-$\sigma_a$) from ToScaNA's table. \code{build_state(m, files=, environment=,
-placzek=, vanadium_smoothing=, materials=, output=)} $\to$ pycorrect
-\code{CorrectState}. \code{run_correction(m, mcams=None|"delta"|"all",
-mcams_options=, workdir=, verbose=, **state_options)} $\to$
+\code{MATERIALS}, \code{material_properties}: re-exported from
+\code{corrections.setup}. \code{read_regrouped(path, wavelength, scale=None)}
+$\to$ ($2\theta$, $y$, error, scale): \code{.adat} or \code{.qdat} (scale from
+the \code{X caption} line or the extension). \code{run_correction(m,
+method="mcams"|"pycorrect", files=, environment=, vanadium_in_environment=,
+placzek=, vanadium_smoothing=, materials=, factors=, vanadium_factors=,
+factor_options=, mcams=, mcams_options=, workdir=, output=, verbose=)} $\to$
 \code{CorrectionResult} (\code{theta}, \code{q}, \code{dcs}, \code{err},
-\code{factors}, \code{source}, \code{state}, \code{pycorrect}, \code{mcams}).
+\code{wavelength}, \code{method}, \code{factors}, \code{vanadium_factors}
+(\code{FactorSet}), \code{intensities}, \code{backgrounds}, \code{pycorrect},
+\code{mcams}, \code{state}, \code{notes}; methods \code{save_factors(basename,
+scale)}, \code{save_intensities(filename, scale)}). \code{build_state(m,
+files=, environment=, placzek=, vanadium_smoothing=, materials=, output=)}
+$\to$ pycorrect \code{CorrectState}; \code{ValueError} for set-ups CORRECT
+cannot describe.
 \code{structure_factor(result, m, q_grid=None)} $\to$ array (Q, S, error).
 \code{save_structure_factor(filename, sq, heading)}.
+
+\tssub{\texttt{corrections.setup}}
+\code{MATERIALS} (V 6.11, TiZr, SiO$_2$, Nb, Al, Cu; g/cm$^3$),
+\code{material_properties(material)} $\to$ ($\rho$, $\sigma_s$, $\sigma_a$),
+material as a name, \code{"formula@density"} or (composition, density).
+\code{CylLayer} (name, body, $\rho$, $\sigma_s$, $\sigma_a$, inner and outer
+diameter, height, fullness; \code{mu(lam)}, \code{scatter_fraction(lam)}),
+\code{make_layer}. \code{CylinderSetup(layers, beam_width, beam_height,
+wavelength)}: \code{bodies}, \code{configurations()}, \code{layers_of},
+\code{mean_path}, \code{atoms_per_area}, \code{scattering_power},
+\code{transmission(config)} (exact), \code{mcams_sample(config)}.
+\code{setups_from_measurement(m, environment=, vanadium_in_environment=,
+materials=)} $\to$ (sample set-up, vanadium set-up).
+
+\tssub{\texttt{corrections.factors}}
+\code{compute_factors(setup, angles, method="mcams"|"pycorrect",
+configurations=, multiple_scattering=, n_points=, ms_particles=, step_deg=,
+ms_fit_degree=, seed=)} $\to$ \code{FactorSet} (\code{A}, \code{A_err},
+\code{delta}, \code{delta_err}, \code{T}, \code{atoms_per_area},
+\code{scattering_power}; \code{q}, \code{table(scale)}, \code{save(file,
+scale, heading)}). \code{load_factors(file)} $\to$ ($x$, columns, scalars).
+\code{pycorrect_supports(setup)} $\to$ (bool, reason).
 
 \tssub{\texttt{corrections.bridge}}
 \code{mcams_factors_like_pycorrect(state, theta, n_particles, n_batches)}:
