@@ -4,13 +4,13 @@ __pycache__/
 .pytest_cache/
 
 # LaTeX build products (docs/)
-docs/*.aux
-docs/*.log
-docs/*.out
-docs/*.toc
-docs/*.fls
-docs/*.fdb_latexmk
-docs/*.synctex.gz
+docs/**/*.aux
+docs/**/*.log
+docs/**/*.out
+docs/**/*.toc
+docs/**/*.fls
+docs/**/*.fdb_latexmk
+docs/**/*.synctex.gz
 docs/*.pdf
 
 # Integrated modules: compiled manuals and regenerable numerical results
