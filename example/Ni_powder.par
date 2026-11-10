@@ -1,0 +1,38 @@
+# ToScaNA sample-description file: synthetic Ni powder (correction example)
+<ins> D4 # instrument
+<pro> 0-00-0000 # proposal
+<mpr> Example # main proposer
+<lco> Example # local contact
+<dte> 01/01/2026-02/01/2026 # dates
+<cyc> 261 # cycle
+<log> 1-1 # notebook-page
+<env> Furnace # environment
+<zac> 0.0 # zero angle (deg)
+<wle> 0.5 # wavelength (A)
+<sli> 4.0 -4.0 # left right slits (mm): beam 8 mm wide
+<fla> 25.0 -25.0 # top bottom flags (mm): beam 50 mm high
+<apr> 0.125 # angular precision (deg)
+<asc> 1.5 135.0 0.125 # angular grid (deg)
+<qsc> 0.3 23.0 0.02 # Q grid (1/A)
+<rsc> 0.0 20.0 0.01 # r grid (A)
+<Cmater> V # container material
+<Cshape> cylinder 5.0 5.2 60.0 # container: type id od height (mm)
+<Nmater> V # normaliser
+<Nshape> cylinder 0.0 6.08 60.0 # vanadium rod
+<Amater> [10B]@1.25 # absorber: 10B powder (g/cm3) in the container
+<Ashape> cylinder 0.0 5.0 60.0 # absorber
+<Emater> V # environment
+<Eshape> cylinder 40.0 40.2 100.0 # furnace shield
+<Sdescr> Ni powder at room temperature # description
+<StempK> 300.0 # temperature (K)
+<Sato01> Ni 1 # element
+<Sdegcc> 8.908 # bulk density (g/cm3)
+<Smassc> 5.25 # mass in the container (g)
+<Sshape> cylinder 0.0 5.0 60.0 # sample: type id od height (mm)
+<Sfulln> 1.0 # fullness
+<Stitle> Ni_powder # title
+<CoFile> data/I_CE.adat # container in furnace
+<AbFile> data/I_ACE.adat # absorber in container in furnace
+<NoFile> data/I_VE.adat # vanadium in furnace
+<EnFile> data/I_E.adat # empty furnace
+<SaFile> data/I_SCE.adat # sample in container in furnace

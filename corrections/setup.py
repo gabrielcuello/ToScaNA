@@ -68,9 +68,36 @@ MATERIALS: dict[str, tuple[dict[str, float], float]] = {
 }
 
 MaterialSpec = Union[str, tuple]
-#: Measurement order of the bodies, from the outside: environment first.
-BODY_ORDER = ("h", "c", "s")
-ROLE_TO_BODY = {"sample": "s", "container": "c", "environment": "h", "vanadium": "v"}
+#: Measurement order of the bodies, from the outside: environment first. The
+#: innermost body is the sample, the absorber (``a``, e.g. 10B powder in the
+#: container, measured instead of the sample) or the vanadium.
+BODY_ORDER = ("h", "c", "s", "a", "v")
+ROLE_TO_BODY = {"sample": "s", "container": "c", "environment": "h", "vanadium": "v",
+                "absorber": "a"}
+
+
+def atomic_weight(name: str) -> float:
+    """Atomic weight (g/mol) of an element or isotope of ToScaNA's table.
+
+    The table has no weight for some isotopes (e.g. B10, B11, Li7: 0); they
+    are then taken from MCAMS's nuclear data (isotope masses, or the mass
+    number, error < 0.1 %)."""
+    weight = float(Element(name).weight)
+    if weight > 0:
+        return weight
+    import re
+    import warnings
+
+    from .mcams.formula import _make_species
+    from .mcams.nuclear_data import AtomicData
+
+    match = re.fullmatch(r"([A-Z][a-z]?)(\d+)", name)
+    if not match:
+        raise ValueError(f"No atomic weight for {name!r} in ToScaNA's table.")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return float(AtomicData(use_periodictable=False).mass(
+            _make_species(match.group(1), int(match.group(2)))))
 
 
 def _composition(material: MaterialSpec, materials: Optional[Mapping[str, tuple]] = None):
@@ -132,7 +159,7 @@ def material_properties(
     total = float(sum(composition.values()))
     conc = {s: n / total for s, n in composition.items()}
     elements = {s: Element(s) for s in conc}
-    molar = sum(c * elements[s].weight for s, c in conc.items())
+    molar = sum(c * atomic_weight(s) for s, c in conc.items())
     rho = getAtomicDensity(density=float(density), molarMass=molar)
     sigma_s = sum(c * elements[s].sig_sca for s, c in conc.items())
     sigma_a = sum(c * elements[s].sig_abs for s, c in conc.items())
@@ -149,7 +176,7 @@ class CylLayer:
     name : str
         Label (free text, unique in the set-up).
     body : str
-        ``"s"``, ``"c"``, ``"h"`` or ``"v"`` (see the module docstring).
+        ``"s"``, ``"c"``, ``"h"``, ``"a"`` (absorber) or ``"v"``.
     rho, sigma_s, sigma_a : float
         Atomic density (atoms/Å³), bound scattering and absorption (2200 m/s)
         cross sections (barn per atom).
@@ -431,3 +458,33 @@ def setups_from_measurement(
         vlayers += [replace(l) for l in layers if l.body == "h"]
     vanadium_setup = CylinderSetup(vlayers, bw, bh, lam)
     return sample_setup, vanadium_setup
+
+
+def absorber_setup_from_measurement(
+    m: Any,
+    *,
+    environment: str = "layer",
+    materials: Optional[Mapping[str, tuple]] = None,
+) -> CylinderSetup:
+    """
+    Set-up of the absorber measurement: the sample set-up with the sample
+    replaced by the absorber (``<Ashape>``, ``<Amater>``; body ``"a"``).
+
+    The absorber (e.g. 10B powder, ``<Amater> [10B]@1.25``) fills the
+    container like the sample; its configuration is e.g. ``"ach"``. Used by
+    `run_correction` when the absorber measurement is a configuration of the
+    Paalman & Pings system (``absorber_model="configuration"``).
+
+    Raises
+    ------
+    ValueError
+        No absorber material in ``<Amater>``.
+    """
+    if not _role_material(m.absorber[0]):
+        raise ValueError("No absorber material (<Amater>).")
+    sample_setup, _ = setups_from_measurement(m, environment=environment, materials=materials)
+    layers = [l for l in sample_setup.layers if l.body != "s"]
+    layers.append(make_layer("absorber", "a", m.absorber[0], m.absorber[2], m.absorber[3],
+                             m.absorber[4], materials=materials))
+    return CylinderSetup(layers, sample_setup.beam_width, sample_setup.beam_height,
+                         sample_setup.wavelength)

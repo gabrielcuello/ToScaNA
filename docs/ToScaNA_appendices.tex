@@ -151,7 +151,9 @@ Commit & Content \\
 \tn{da86b8b} & D4Numor, MCAMS 2.7, pycorrect and the validation study, as received. \\
 \tn{91ee4bc} & Their integration into the package (Section~\ref{sec:integration}). \\
 \tn{26947d6} & Correction workflow: Measurement $\to$ pycorrect (MCAMS) $\to$ S(Q). \\
-(next) & MCAMS default: general Paalman \& Pings chain, \code{<LayNN>} layers, absorber, \code{.qdat} input, factor files. \\
+\tn{f69206a} & MCAMS default: general Paalman \& Pings chain, \code{<LayNN>} layers, absorber, \code{.qdat} input, factor files. \\
+\tn{fc4cea1} & Command line \code{correct_cli}; vanadium error through $K$; the \code{example} folder. \\
+(next) & Absorber as a configuration of the P\&P system (B, $I_h$, $I_c$, $K$ solved together); example with the environment as a body. \\
 \bottomrule
 \end{longtable}
 
@@ -1035,6 +1037,7 @@ File & Role \\
 \code{test_integration.py} & NeXus reading in both formats, d4numor, pycorrect command line, MCAMS nuclear data, bridge. \\
 \code{test_workflow_correction.py}, \code{synthetic_d4.py} & The pycorrect method on a synthetic experiment with known S(Q) (\code{synthetic_d4.make_experiment}). \\
 \code{test_correction_mcams.py} & The MCAMS method: hollow sample, can with a gap, furnace and shield, absorber, \code{.qdat} sample, built forward with MCAMS factors and recovered to $10^{-7}$; identity with CORRECT given CORRECT's factors; \code{<LayNN>} parsing; transmissions; factor files on both scales; pycorrect's limits. \\
+\code{test_example.py} & The \code{example} folder with the full formalism (environment a body, absorber a configuration): noise free, every unknown ($d\sigma/d\Omega$, $I_h$, $I_c$, $K$, $B$) recovered to $10^{-6}$, also over-determined (extra empty run); with noise, $d\sigma/d\Omega$ and $B$ within their errors (rms $\approx1\sigma$); \code{.qdat} input; command line outputs; its CORRECT command file equals \code{method="pycorrect"}. \\
 \code{test_pycorrect.py} & pycorrect's own tests (Paalman \& Pings vs brute force, multiple-scattering limits, parser, round trip of the whole correction chain, flat plate), with a \code{unittest} wrapper. \\
 \code{mcams_checks.py}, \code{test_mcams.py} & MCAMS's own self-test (paths vs brute force, exact interaction rates, direct method vs Monte Carlo, all geometries), run unchanged in a separate process by the wrapper. \\
 \bottomrule
@@ -2040,6 +2043,7 @@ $\to$ ($2\theta$, $y$, error, scale): \code{.adat} or \code{.qdat} (scale from
 the \code{X caption} line or the extension). \code{run_correction(m,
 method="mcams"|"pycorrect", files=, environment=, vanadium_in_environment=,
 placzek=, vanadium_smoothing=, materials=, factors=, vanadium_factors=,
+absorber_factors=, absorber_model="auto"|"configuration"|"transmission",
 factor_options=, mcams=, mcams_options=, workdir=, output=, verbose=)} $\to$
 \code{CorrectionResult} (\code{theta}, \code{q}, \code{dcs}, \code{err},
 \code{wavelength}, \code{method}, \code{factors}, \code{vanadium_factors}
@@ -2051,6 +2055,12 @@ $\to$ pycorrect \code{CorrectState}; \code{ValueError} for set-ups CORRECT
 cannot describe.
 \code{structure_factor(result, m, q_grid=None)} $\to$ array (Q, S, error).
 \code{save_structure_factor(filename, sq, heading)}.
+
+\tssub{\texttt{workflows.correct\_cli}}
+\code{main(argv)}: command line of \code{run_correction}
+(\code{python -m toscana.workflows.correct_cli SAMPLE.par [options]}); writes
+factor, intensity, $d\sigma/d\Omega$ and S(Q) files; returns the
+\code{CorrectionResult}.
 
 \tssub{\texttt{corrections.setup}}
 \code{MATERIALS} (V 6.11, TiZr, SiO$_2$, Nb, Al, Cu; g/cm$^3$),
@@ -2064,6 +2074,10 @@ wavelength)}: \code{bodies}, \code{configurations()}, \code{layers_of},
 \code{transmission(config)} (exact), \code{mcams_sample(config)}.
 \code{setups_from_measurement(m, environment=, vanadium_in_environment=,
 materials=)} $\to$ (sample set-up, vanadium set-up).
+\code{absorber_setup_from_measurement(m, environment=, materials=)}: the
+sample set-up with the sample replaced by the absorber (body \code{a}).
+\code{atomic_weight(name)}: from ToScaNA's table, or MCAMS's isotope masses
+when the table has 0 (e.g.\ B10, B11, Li7).
 
 \tssub{\texttt{corrections.factors}}
 \code{compute_factors(setup, angles, method="mcams"|"pycorrect",

@@ -46,12 +46,14 @@ numors
     getNumorFiles     expand "123456" / "123456-123460" into a list of numors.
 parameters
     readParam         read a d4creg parameter file into runInfo (may run d4creg).
+    regroup           readParam with a short printout (for notebooks).
 running_params
     getRunningParams  read the parameter file of the data-treatment notebooks.
 saving
     saveFile_xye, saveFile_3col   write 3-column (x, y, e) files.
     saveCorrelations  write r, G, g, RDF, T, N from separate arrays.
     saveRSCF          write the output of numerics.fourier.sineFT (6/11 columns).
+    save_columns      write named 1-D arrays as a table with a header.
     saveOneNumor      write the corrected cells of one numor (<numor>.cdat).
 correct
     generate_com      fill a CORRECT template file.
@@ -96,12 +98,13 @@ from .corrections import (
 from .d4creg_outputs import getDiffA, saveDiffAngle, saveDiffQ
 from .loading import read_3col, read_xye
 from .numors import getNumorFiles
-from .parameters import readParam
+from .parameters import readParam, regroup
 from .running_params import getRunningParams
 from .saving import (
     saveCorrelations,
     saveFile_3col,
     saveFile_xye,
+    save_columns,
     saveOneNumor,
     saveRSCF,
 )
@@ -128,6 +131,7 @@ __all__ = [
     "read_3col",
     "read_xye",
     "readParam",
+    "regroup",
     "saveCORRECT",
     "saveCorrelations",
     "saveDiffAngle",
@@ -136,4 +140,5 @@ __all__ = [
     "saveFile_xye",
     "saveOneNumor",
     "saveRSCF",
+    "save_columns",
 ]

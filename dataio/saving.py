@@ -434,3 +434,45 @@ def saveRSCF(  # noqa: N802 (legacy API)
             )
         print("File " + filename + " saved")
     return
+
+
+def save_columns(
+    filename: str,
+    columns: Sequence[Sequence[float] | np.ndarray],
+    names: Sequence[str],
+    heading: Sequence[str] = (),
+) -> None:
+    """
+    Write 1-D arrays as the columns of an ASCII table.
+
+    File layout: ``# <filename>``; ``# <text>`` for each heading line; a
+    commented line with the column `names`; then one line per point, every
+    value with format ``{:14.7g}``. Prints ``Written <filename>``.
+
+    Parameters
+    ----------
+    filename : str
+        Output file (overwritten).
+    columns : sequence of array_like
+        Columns of equal length.
+    names : sequence of str
+        Column names (same number as `columns`).
+    heading : sequence of str, optional
+        Header lines (without ``#``).
+
+    Raises
+    ------
+    ValueError
+        If the number of names differs from the number of columns.
+    """
+    if len(names) != len(columns):
+        raise ValueError("save_columns: one name per column is needed.")
+    data = np.column_stack([np.asarray(c, dtype=np.float64) for c in columns])
+    with open(filename, "w", encoding="utf-8") as fh:
+        fh.write(f"# {filename}\n")
+        for line in heading:
+            fh.write(f"# {line}\n")
+        fh.write("# " + " ".join(f"{n:>14s}" for n in names) + "\n")
+        for row in data:
+            fh.write("  " + " ".join(f"{v:14.7g}" for v in row) + "\n")
+    print("Written", filename)

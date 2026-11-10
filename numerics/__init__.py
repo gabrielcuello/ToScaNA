@@ -14,6 +14,10 @@ fourier
     getSineFT       Generic sine transform 2/π·c·∫ [y(v) - s] v sin(vu) W(v) dv.
     backFT          Cut g(r), transform to S(Q) and back.
     getSineIntegral Sine integral Si(x).
+    fourier_with_errors  Matrix form of sineFT: values, exact errors, Jacobians.
+    back_fourier_iterations  backFT iterated, with exact errors.
+    ft_matrix       Matrix W of G(r) = W (S - 1).
+    FourierSet      Result of the two functions above.
 windows
     Lorch           Standard Lorch window at one point (M(0) = 1).
     LorchArray      Standard Lorch window over an array.
@@ -38,6 +42,8 @@ fitting
     get_chi         RMS difference of two sets of values.
     fit_and_find_extremum  Parabola fit and its extremum.
     fittingRange0, fittingRange, fit_range  Points inside a rectangle.
+    qmask, ymask    Masks for fits: several x intervals; optional y limits.
+    fit_prediction_error  1σ error of a fitted curve from the covariance.
 polynomials
     polyQ1, polyQ2, polyQ4  Polynomials (Horner scheme).
 peak_finding
@@ -59,12 +65,24 @@ of docs/ToScaNA_appendices.tex.
 from .binning import get_bins, get_xlim, rebin
 from .fitting import (
     fit_and_find_extremum,
+    fit_prediction_error,
     fit_range,
     fittingRange,
     fittingRange0,
     get_chi,
+    qmask,
+    ymask,
 )
-from .fourier import backFT, getSineFT, getSineIntegral, sineFT
+from .fourier import (
+    FourierSet,
+    back_fourier_iterations,
+    backFT,
+    fourier_with_errors,
+    ft_matrix,
+    getSineFT,
+    getSineIntegral,
+    sineFT,
+)
 from .line_shapes import (
     Gaussian,
     Gaussian_error,
@@ -84,7 +102,14 @@ from .signal_processing import smooth_curve
 from .windows import Lorch, LorchArray
 
 __all__ = [
+    "FourierSet",
+    "back_fourier_iterations",
     "backFT",
+    "fit_prediction_error",
+    "fourier_with_errors",
+    "ft_matrix",
+    "qmask",
+    "ymask",
     "binary_sum",
     "fit_and_find_extremum",
     "get_bins",

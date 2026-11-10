@@ -182,11 +182,11 @@ confused with other modules of the same name.}
 \section{Checking the installation}
 
 Run the test suite (Appendix~\ref{app:tests}); it needs no installation
-and takes about 35 seconds:
+and takes about three minutes:
 \begin{lstlisting}
 python /Users/cuello/AI-lab/ToScaNA-pilot/tests/run_tests.py
 ...
-Ran 121 tests in 80 s
+Ran 136 tests in 180 s
 OK
 \end{lstlisting}
 
@@ -726,11 +726,53 @@ $C$:
   \item Normalisation and Placzek correction of the sample:
     $d\sigma/d\Omega = I_s/(K\,n\langle L\rangle_s) + \sum_i c_i\sigma_i P_i/4\pi$.
 \end{enumerate}
-Errors of the measurements are propagated in quadrature through every step.
+Errors of the measurements are propagated in quadrature through every step;
+without vanadium smoothing (default) the error of the vanadium enters through
+$K$, which scales the sample intensity \emph{before} the multiple-scattering
+subtraction (checked by a Monte Carlo over noise realisations: the scatter of
+the results equals the propagated errors).
 \code{res.intensities} holds $I_s$, $I_c$, $I_h$, $I_v$ (with errors),
 the smoothed vanadium and $MS_C$; \code{res.backgrounds} the $B_C$; both on the
 data grid (\code{res.theta}, \code{res.q}), so that the subtraction can be
 redone or modified in a notebook.
+
+\paragraph{Which factors enter.} A factor $A_{b,C}$ is needed for every body
+$b$ of every configuration $C$ that was \emph{measured}. With the environment
+as a body (E $\equiv$ \code{h}) and the measurements E, CE, SCE, VE, ACE:
+$A_{E,E}$; $A_{E,CE}$, $A_{C,CE}$; $A_{E,SCE}$, $A_{C,SCE}$, $A_{S,SCE}$;
+$A_{E,VE}$, $A_{V,VE}$; $A_{E,ACE}$, $A_{C,ACE}$, $A_{A,ACE}$. Factors of
+configurations that were not measured ($A_{S,S}$, or $A_{S,SC}$, $A_{C,SC}$,
+$A_{C,C}$ when the furnace is in the beam) do not enter; the latter are those
+of \code{environment="background"}, where the environment is not a body (an
+approximation: it neglects the attenuation of the sample and container
+scattering by the environment).
+
+\paragraph{The absorber as a configuration.} \newbeh{} With
+\code{environment="layer"} and an absorber measurement (e.g.\ $^{10}$B powder
+in the container, in the environment; \code{<Amater> [10B]@1.25},
+\code{<Ashape>}), the absorber is a body \code{a} and its measurement the
+configuration \code{"ach"} (\code{corrections.setup.absorber_setup_from_measurement}).
+Every measurement contains the room background $B$, not attenuated by the
+set-up; the measurements without sample are then linear, at each angle, in
+the unknowns $B$, $I^1_h$, $I^1_c$ and $K$:
+\begin{align*}
+I_E &= B + A_{h,h}I^1_h + MS_h,\\
+I_{CE} &= B + A_{h,ch}I^1_h + A_{c,ch}I^1_c + MS_{ch},\\
+I_{ACE} &= B + A_{h,ach}I^1_h + A_{c,ach}I^1_c + A_{a,ach}K P_a/4\pi + MS_{ach},\\
+I_{VE} &= B + A_{h,vh}I^1_h + A_{v,vh}K(1-P^{Pl}_v)P_v/4\pi + MS_{vh},
+\end{align*}
+with $MS_C=\delta_C K\sum_b A_{b,C}P_b/4\pi$. The absorber fixes $B$, the
+vanadium $K$. \code{run_correction} solves the system (weighted least squares
+when there are more measurements, e.g.\ an empty-instrument run given as
+\code{files["empty"]}), then
+$I^1_s=(I_{SCE}-B-A_{h,sch}I^1_h-A_{c,sch}I^1_c-MS_{sch})/A_{s,sch}$ and
+$d\sigma/d\Omega = I^1_s/(K n\langle L\rangle_s)+\sum_i c_i\sigma_iP_i/4\pi$.
+Errors are propagated to first order from all the measurements, with their
+correlations. Once $B$ and $K$ are known this is the nested subtraction
+above. The result also holds \code{res.absorber_factors},
+\code{res.intensities["K"]} and \code{res.backgrounds["B"]}. This is chosen
+automatically (\code{absorber_model="auto"}); \code{"transmission"} uses
+$B_C=T_C I_\text{empty}+(1-T_C)I_\text{absorber}$ instead.
 
 \paragraph{Options of \code{run_correction}.}
 \begin{itemize}
@@ -787,6 +829,55 @@ gap, a niobium furnace and a heat shield, an absorber, the sample given as
 \code{.qdat}; $d\sigma/d\Omega$ and every intermediate intensity are recovered
 to $10^{-7}$. To compare the methods on real data, run both and compare
 \code{res.factors} and \code{res.dcs}.}
+
+\section{Command line}\label{sec:correct-cli}
+
+The same correction without Python code \newbeh{}:
+\begin{lstlisting}
+python -m toscana.workflows.correct_cli SAMPLE.par               # MCAMS, files of the .par
+python -m toscana.workflows.correct_cli SAMPLE.par --input qdat --scale q --outdir results
+python -m toscana.workflows.correct_cli SAMPLE.par --method pycorrect
+python -m toscana.workflows.correct_cli --help
+\end{lstlisting}
+{\sloppy Options: \code{--method mcams|pycorrect}, \code{--input par|adat|qdat} (the
+files of the \code{.par} or the same names with that extension),
+\code{--scale q|angle|both}, \code{--outdir}, \code{--environment},
+\code{--vanadium-in-environment}, \code{--no-absorber}, \code{--placzek},
+\code{--vanadium-smoothing}, \code{--n-points}, \code{--ms-particles},
+\code{--seed}, \code{--absorber-model}, \code{--background FILE},
+\code{--mcams delta|all} (pycorrect with MCAMS factors),
+\code{--qgrid}. It writes the factor files (sample and vanadium set-ups), the
+intensities and backgrounds on the requested scales, $d\sigma/d\Omega$
+(\code{<title>_<method>_dcs.dat}) and S(Q) (\code{.soq}). From Python,
+\code{correct_cli.main([...])} does the same and returns the result.\par}
+
+\section{A complete example}\label{sec:example}
+
+The folder \code{example} contains a synthetic D4 experiment with all the
+steps \newbeh{}: Ni powder in a vanadium can inside a furnace, a vanadium rod
+and a $^{10}$B absorber, i.e.\ the five measurements \code{I_SCE},
+\code{I_CE}, \code{I_E}, \code{I_VE}, \code{I_ACE}, each as \code{.adat} and
+\code{.qdat}, with the true values. The notebook
+\code{D4_corrections_example.ipynb} computes the MCAMS factors, makes the
+subtraction step by step (and checks it against \code{run_correction}),
+saves $I_S$, $I_V$, the factors, $d\sigma/d\Omega$ and S(Q) on both scales,
+and compares with pycorrect. \code{run_example.py} is the same as a script;
+\code{correct.py} and \code{run_pycorrect.py} are the command lines of the
+previous section and of pycorrect; \code{data/Ni_powder.com} is the CORRECT
+command file of the same experiment. \code{example/README.md} lists all the
+commands. The environment is a body and the absorber measurement a
+configuration (previous paragraphs): the notebook builds and solves the
+equations explicitly. On these data the correction recovers the truth with
+an rms deviation of $1.0\sigma$ (for $d\sigma/d\Omega$ and for $B$). The
+comparison shows CORRECT's furnace factors 2--8\,\% lower than MCAMS's for this
+narrow beam (8\,mm) and wide furnace (40\,mm); a brute-force integration
+confirms the MCAMS values. Treating the furnace as a background gives
+$d\sigma/d\Omega$ within $-6$ to $+3$\,\% here.
+
+\warn{If another package called \code{toscana} is installed in the Python
+environment (e.g.\ an older version), \code{python -m toscana...} uses that
+one. The example's \code{toscana_path.py} (imported first by its scripts and
+notebook) always loads the ToScaNA of the parent folder.}
 
 \section{pycorrect: CORRECT in Python}
 
