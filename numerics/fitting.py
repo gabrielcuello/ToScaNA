@@ -18,6 +18,12 @@ fittingRange(xmin, xmax, ymin, ymax, abcissas, ordinates, errors)
     Points inside a rectangle, as three (n, 1) arrays.
 fit_range(xmin, xmax, ymin, ymax, data)
     Points of a 3-column array inside a rectangle, as one (n, 3) array.
+qmask(x, ranges)
+    Boolean mask of the x inside any of several intervals (fit masks).
+ymask(y, yrange)
+    Boolean mask of the finite y inside optional limits.
+fit_prediction_error(func, x, popt, pcov)
+    1σ error of a fitted curve, from the parameter covariance.
 
 Conventions
 -----------
@@ -320,3 +326,87 @@ def fit_range(
         xmin, xmax, ymin, ymax, dat[:, 0], dat[:, 1], dat[:, 2], "the function fit_range"
     )
     return np.concatenate((x, y, e), axis=1)
+
+
+def qmask(x: ArrayLike, ranges) -> NDArray[np.bool_]:
+    """
+    Mask of the points inside any of several closed intervals.
+
+    Used to select the points of a fit (e.g. the self scattering of the
+    sample or of the vanadium) in one or several Q ranges, leaving out the
+    beamstop region, Bragg peaks or bad detector regions.
+
+    Parameters
+    ----------
+    x : array_like
+        Abscissas (e.g. Q in Å⁻¹).
+    ranges : iterable of (float, float)
+        Intervals (a, b); a point is selected if a <= x <= b for any of them.
+
+    Returns
+    -------
+    ndarray of bool, same shape as `x`
+    """
+    x = np.asarray(x, dtype=np.float64)
+    mask = np.zeros(x.shape, dtype=bool)
+    for a, b in ranges:
+        mask |= (x >= a) & (x <= b)
+    return mask
+
+
+def ymask(y: ArrayLike, yrange=None) -> NDArray[np.bool_]:
+    """
+    Mask of the finite ordinates inside optional limits.
+
+    Parameters
+    ----------
+    y : array_like
+        Ordinates.
+    yrange : (float, float) or None
+        (ymin, ymax), closed; None selects every finite value.
+
+    Returns
+    -------
+    ndarray of bool, same shape as `y`
+    """
+    y = np.asarray(y, dtype=np.float64)
+    if yrange is None:
+        return np.isfinite(y)
+    return (y >= yrange[0]) & (y <= yrange[1])
+
+
+def fit_prediction_error(func, x: ArrayLike, popt: ArrayLike, pcov: ArrayLike,
+                         eps: float = 1e-6) -> NDArray[np.float64]:
+    """
+    1σ error of a fitted curve f(x; p) from the covariance of the parameters.
+
+        σ_f(x)² = J(x)ᵀ C J(x),  J_i(x) = ∂f/∂p_i (forward differences)
+
+    Parameters
+    ----------
+    func : callable
+        Model ``func(x, *p)`` (as for `scipy.optimize.curve_fit`).
+    x : array_like
+        Points where the error is evaluated.
+    popt, pcov : array_like
+        Fitted parameters and their covariance matrix (from `curve_fit`).
+    eps : float, optional
+        Relative step of the numerical derivatives (default 1e-6).
+
+    Returns
+    -------
+    ndarray
+        σ_f at every x. Linear propagation: the errors at different x are
+        correlated.
+    """
+    popt = np.asarray(popt, dtype=np.float64)
+    x = np.atleast_1d(np.asarray(x, dtype=np.float64))
+    f0 = np.asarray(func(x, *popt), dtype=np.float64)
+    jac = np.empty((len(popt), len(x)))
+    for i, p in enumerate(popt):
+        h = eps * max(abs(p), 1.0)
+        pp = popt.copy()
+        pp[i] += h
+        jac[i] = (np.asarray(func(x, *pp), dtype=np.float64) - f0) / h
+    var = np.einsum("ik,ij,jk->k", jac, np.asarray(pcov, dtype=np.float64), jac)
+    return np.sqrt(np.clip(var, 0.0, None))

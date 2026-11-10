@@ -47,6 +47,10 @@ Public names
 read_regrouped, run_correction, CorrectionResult, structure_factor,
 save_structure_factor, build_state (pycorrect input), MATERIALS,
 material_properties (from toscana.corrections.setup).
+mcams_correct (single-scattering intensities of sample and vanadium, before
+any normalisation, with a choice of multiple-scattering model),
+without_container, atoms_in_beam (for a normalisation by a fitted vanadium,
+as in the D4 notebooks).
 """
 
 from __future__ import annotations
@@ -65,8 +69,9 @@ from toscana.corrections.setup import MATERIALS, material_properties  # noqa: F4
 from toscana.isotopes import Element
 
 __all__ = [
-    "MATERIALS", "CorrectionResult", "build_state", "material_properties", "read_regrouped",
-    "run_correction", "save_structure_factor", "structure_factor",
+    "MATERIALS", "CorrectionResult", "atoms_in_beam", "build_state", "material_properties",
+    "mcams_correct", "read_regrouped", "run_correction", "save_structure_factor",
+    "structure_factor", "without_container",
 ]
 
 
@@ -973,3 +978,150 @@ def save_structure_factor(filename: str, sq: np.ndarray, heading: Sequence[str] 
     ]
     with contextlib.redirect_stdout(io.StringIO()):
         saveFile_3col(filename, np.asarray(sq), lines)
+
+
+# ============================================================================
+# Intensities before normalisation (D4 notebooks with a fitted vanadium)
+# ============================================================================
+def without_container(m: Any) -> Any:
+    """
+    Shallow copy of a Measurement whose container is ignored by the corrections.
+
+    For experiments where the can was not measured and the container file of
+    the parameter file is in fact the empty instrument: the container is left
+    out of the set-up (``m.container[0] = "None"``); `m` is not modified.
+    """
+    import copy
+
+    m2 = copy.copy(m)
+    m2.container = ("None",) + tuple(m.container[1:])
+    return m2
+
+
+def mcams_correct(
+    m: Any,
+    *,
+    environment: str = "background",
+    vanadium_in_environment: bool = False,
+    ms_mode: str = "additive",
+    factor_options: Optional[Mapping[str, Any]] = None,
+    absorber_model: str = "auto",
+) -> dict:
+    """
+    Single-scattering intensities of sample and vanadium, before normalisation.
+
+    The Paalman & Pings chain of `run_correction` (method "mcams", MCAMS
+    factors, no Placzek correction, no vanadium smoothing), stopped before
+    the normalisation, with a choice of how the multiple scattering of the
+    sample set-up is removed.
+
+    Parameters
+    ----------
+    m : Measurement
+    environment, vanadium_in_environment, factor_options, absorber_model
+        As in `run_correction`.
+    ms_mode : {"additive", "proportional", "none"}
+        ``"additive"`` (the chain of `run_correction`): MS_C = δ_C K Σ_b A_b,C
+        Σρσ<L>_b/4π is subtracted from every configuration C (isotropic,
+        bound cross sections, flat in Q).
+        ``"proportional"``: every configuration is divided by 1 + δ_C, as is
+        done for the vanadium, i.e. the multiple scattering is assumed to have
+        the Q dependence of the measured signal. Useful for hydrogenous
+        samples, whose measured scattering falls strongly with Q (recoil) so
+        that the additive MS can exceed it. Computed exactly as the chain
+        without multiple scattering with every A_b,C multiplied by 1 + δ_C
+        (dividing I_C - B_C by 1 + δ_C is the same).
+        ``"none"``: no multiple-scattering correction.
+
+    Returns
+    -------
+    dict
+        ``theta`` (deg), ``q`` (Å⁻¹), sorted by increasing Q;
+        ``I_s``, ``dI_s``: single scattering of the sample actually in the
+        beam (counts per monitor) and its error, with `ms_mode`;
+        ``I_s_noMS``, ``I_s_additive``: the sample without multiple-scattering
+        correction and with the additive one (for comparison);
+        ``I_v``, ``dI_v``: vanadium, (V - B)/[A_v (1 + δ_v)];
+        ``order``: the sort indices applied to the arrays of the results;
+        ``result``: the CorrectionResult with the MCAMS factors (additive
+        chain); ``result_used``: the run that gave ``I_s``.
+
+    Raises
+    ------
+    ValueError
+        Unknown `ms_mode` (and the errors of `run_correction`).
+    """
+    import copy
+
+    if ms_mode not in ("additive", "proportional", "none"):
+        raise ValueError("ms_mode must be 'additive', 'proportional' or 'none'.")
+    kw = dict(method="mcams", environment=environment,
+              vanadium_in_environment=vanadium_in_environment, placzek="none",
+              vanadium_smoothing=0, absorber_model=absorber_model)
+    res = run_correction(m, factor_options=factor_options, **kw)
+    fs = res.factors
+    zeros = {k: np.zeros_like(np.asarray(v, float)) for k, v in fs.delta.items()}
+    more = dict(vanadium_factors=res.vanadium_factors, absorber_factors=res.absorber_factors)
+    fs0 = copy.copy(fs)
+    fs0.delta = zeros
+    res0 = run_correction(m, factors=fs0, **more, **kw)
+    used = res if ms_mode == "additive" else res0
+    if ms_mode == "proportional":
+        fsp = copy.copy(fs)
+        fsp.delta = zeros
+        fsp.A = dict(fs.A)
+        for cfg in fs.configurations:
+            d = np.asarray(fs.delta.get(f"delta_{cfg}", 0.0), float)
+            for body in cfg:
+                key = f"A_{body},{cfg}"
+                if key in fsp.A:
+                    fsp.A[key] = np.asarray(fs.A[key], float) * (1.0 + d)
+        used = run_correction(m, factors=fsp, **more, **kw)
+    order = np.argsort(res.q)
+
+    def pick(a):
+        return np.asarray(a, float)[order]
+
+    return {"theta": pick(res.theta), "q": pick(res.q),
+            "I_s": pick(used.intensities["I_s"]), "dI_s": pick(used.intensities["I_s_err"]),
+            "I_s_noMS": pick(res0.intensities["I_s"]),
+            "I_s_additive": pick(res.intensities["I_s"]),
+            "I_v": pick(res.intensities["I_v"]), "dI_v": pick(res.intensities["I_v_err"]),
+            "order": order, "result": res, "result_used": used}
+
+
+def atoms_in_beam(m: Any, vanadium_density: float = 6.11) -> tuple[float, float, dict]:
+    """
+    Numbers of sample and vanadium atoms in the beam.
+
+    Sample: effective atomic density of the parameter file (mass/volume)
+    times the volume in the beam, π(ro² - ri²)h, with h = min(sample height,
+    beam height), or Fullness × beam height when the fullness is < 1 (the
+    sample fills that fraction of the beam, as in the MCAMS set-up).
+    Vanadium: the rod of the parameter file (``<Nshape>``: inner and outer
+    diameter, height), height limited to the beam height.
+
+    Parameters
+    ----------
+    m : Measurement
+    vanadium_density : float, optional
+        g/cm³ (default 6.11).
+
+    Returns
+    -------
+    (N_s, N_v, details)
+        Numbers of atoms, and a dict with ``h_sample_mm``, ``V_sample_cm3``,
+        ``V_vanadium_cm3``, ``rho_vanadium`` (atoms/Å³).
+    """
+    from toscana.physics import getAtomicDensity
+
+    bh = float(m.beamHeight)
+    f = float(m.Fullness)
+    h_s = min(float(m.Height), bh) if f >= 1 else f * bh
+    vol_s = math.pi * (m.OuterRadius**2 - m.InnerRadius**2) * h_s / 1000.0
+    ri_v, ro_v = float(m.normaliser[2]) / 2.0, float(m.normaliser[3]) / 2.0
+    vol_v = math.pi * (ro_v**2 - ri_v**2) * min(float(m.normaliser[4]), bh) / 1000.0
+    rho_v = getAtomicDensity(density=vanadium_density, molarMass=Element("V").weight)
+    return (vol_s * 1e24 * m.EffAtomicDensity, vol_v * 1e24 * rho_v,
+            {"h_sample_mm": h_s, "V_sample_cm3": vol_s, "V_vanadium_cm3": vol_v,
+             "rho_vanadium": rho_v})

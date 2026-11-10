@@ -18,6 +18,11 @@ run_correction, read_regrouped, structure_factor, save_structure_factor, build_s
     ``Measurement`` to the corrected cross section and to S(Q), ready for
     ``sineFT``: ToScaNA's Paalman & Pings chain with MCAMS factors (default,
     any set of concentric cylinders, absorber) or CORRECT 2.24 (pycorrect).
+mcams_correct, without_container, atoms_in_beam
+    (module ``correction``) Single-scattering intensities of sample and
+    vanadium before normalisation (multiple scattering additive, proportional
+    or none), and the numbers of atoms in the beam, for a normalisation by a
+    fitted vanadium.
 
 Conventions
 -----------
@@ -28,23 +33,29 @@ current working directory; the log is ``../logfiles/d4creg.log``.
 from .correction import (
     MATERIALS,
     CorrectionResult,
+    atoms_in_beam,
     build_state,
     material_properties,
+    mcams_correct,
     read_regrouped,
     run_correction,
     save_structure_factor,
     structure_factor,
+    without_container,
 )
 from .d4creg import d4creg
 
 __all__ = [
     "MATERIALS",
     "CorrectionResult",
+    "atoms_in_beam",
     "build_state",
     "d4creg",
     "material_properties",
+    "mcams_correct",
     "read_regrouped",
     "run_correction",
     "save_structure_factor",
     "structure_factor",
+    "without_container",
 ]

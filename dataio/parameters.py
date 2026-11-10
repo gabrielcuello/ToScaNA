@@ -12,6 +12,9 @@ Functions
 ---------
 readParam
     Read a d4creg parameter file, return ``runInfo``; run d4creg at each ``<run>``.
+regroup
+    Run `readParam` quietly (only the d4creg command lines are printed),
+    optionally only if some expected output file is missing.
 
 Conventions
 -----------
@@ -353,3 +356,51 @@ def readParam(parametersFile: str) -> dict[str, object]:  # noqa: N802 (legacy A
             raise ValueError(f"Input error in line: {i + 1} file: {parametersFile}")
 
     return runInfo
+
+
+def regroup(dofile: str, outputs=(), force: bool = True, quiet: bool = True) -> bool:
+    """
+    Regroup the numors described in a d4creg parameter file (`readParam`).
+
+    Parameters
+    ----------
+    dofile : str
+        d4creg parameter file (``<rdp>``, ``<out>``, ``<num>``, ``<run>``...).
+    outputs : iterable of str, optional
+        Files that the regrouping must produce; with ``force=False`` nothing
+        is done if they all exist.
+    force : bool, optional
+        Regroup in any case (default True).
+    quiet : bool, optional
+        Print only the d4creg command lines and the numbers of numors
+        (default True); otherwise the full output of `readParam`.
+
+    Returns
+    -------
+    bool
+        True if d4creg was run.
+
+    Notes
+    -----
+    The matplotlib backend is restored after the regrouping (d4creg may
+    change it), so that the function can be used in notebooks.
+    """
+    import contextlib
+    import io
+    import os
+
+    if not force and outputs and all(os.path.isfile(f) for f in outputs):
+        print("Regrouped files already present (force=True to regroup again).")
+        return False
+    import matplotlib
+
+    backend = matplotlib.get_backend()
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out) if quiet else contextlib.nullcontext():
+        readParam(dofile)
+    matplotlib.use(backend)
+    if quiet:
+        for line in out.getvalue().splitlines():
+            if "d4creg -x" in line or "Number of numors" in line:
+                print(line.strip())
+    return True

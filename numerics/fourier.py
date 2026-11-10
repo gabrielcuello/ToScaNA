@@ -20,6 +20,16 @@ backFT(qu, ar, pdf, density, cut)
     Cut g(r), transform to S(Q) and back; returns (S, G, g, RDF, T, N).
 getSineIntegral(x)
     Sine integral Si(x) = ∫_0^x sin(t)/t dt (exact, `scipy.special.sici`).
+fourier_with_errors(q, s, ds, r, rho, window, qmax)
+    Same transform as `sineFT`, written as a matrix product, returning a
+    `FourierSet` (values, exact errors and the Jacobians dG/dS, dg/dS).
+back_fourier_iterations(q, ds, start, rho, cut, niter)
+    `backFT` applied `niter` times from a `FourierSet`, with exact errors
+    propagated through the iterations (the cut is a projection).
+ft_matrix(q, r, window, qmax)
+    The matrix W of G(r) = W (S - 1).
+FourierSet
+    Container of r, G, g, RDF, T, N, their errors and Jacobians.
 
 Private helpers: `_simpson_weights` (quadrature weights of SciPy's Simpson
 rule), `_sine_ft_errors` (exact error propagation), `_running_simpson_matrix`
@@ -60,7 +70,8 @@ docs/ToScaNA_appendices.tex.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 from scipy import integrate, special  # type: ignore[import-untyped]
@@ -781,4 +792,237 @@ def _apply_cut(
     for lo, hi in zip(cut[1::2], cut[2::2]):
         mask |= (lo < ar) & (ar < hi)
     out[mask] = 0.0
+    return out
+
+
+# ============================================================================
+# Matrix form of the transforms, with exact errors (values identical to
+# sineFT / backFT; added 2026-11 for the D4 notebooks of D4examples_v3)
+# ============================================================================
+@dataclass
+class FourierSet:
+    """
+    Real-space functions on an r grid with their 1σ errors.
+
+    Attributes
+    ----------
+    r : ndarray, shape (N_r,)
+        r grid (Å).
+    G, dG : ndarray
+        Pair correlation function G(r) (Å⁻²) and its error.
+    g, dg : ndarray
+        Pair distribution function g(r) and its error (g = 0 for r <= 0).
+    RDF, dRDF : ndarray
+        Radial distribution function 4πρr²g (atoms/Å) and its error.
+    T, dT : ndarray
+        T(r) = 4πρr g (Å⁻²) and its error.
+    N, dN : ndarray
+        Running integral of the RDF from r[0] (atoms) and its error.
+    jac_G, jac_g : ndarray, shape (N_r, N_Q)
+        Jacobians dG/dS and dg/dS with respect to the original S(Q); any
+        linear function y = J (S - 1) has σ_y² = (J²) σ_S².
+    S, dS : ndarray or None
+        S(Q) and its error (only for the sets of `back_fourier_iterations`).
+    """
+
+    r: NDArray[np.float64]
+    G: NDArray[np.float64]
+    dG: NDArray[np.float64]
+    g: NDArray[np.float64]
+    dg: NDArray[np.float64]
+    RDF: NDArray[np.float64]
+    dRDF: NDArray[np.float64]
+    T: NDArray[np.float64]
+    dT: NDArray[np.float64]
+    N: NDArray[np.float64]
+    dN: NDArray[np.float64]
+    jac_G: NDArray[np.float64]
+    jac_g: NDArray[np.float64]
+    S: Optional[NDArray[np.float64]] = None
+    dS: Optional[NDArray[np.float64]] = None
+
+    def table(self) -> NDArray[np.float64]:
+        """
+        Return the (N_r, 11) array r, G, dG, g, dg, RDF, dRDF, T, dT, N, dN.
+
+        Same layout as ``sineFT(..., with_errors=True)``, so it can be
+        written with ``toscana.dataio.saveRSCF``.
+        """
+        return np.column_stack([self.r, self.G, self.dG, self.g, self.dg, self.RDF,
+                                self.dRDF, self.T, self.dT, self.N, self.dN])
+
+
+def ft_matrix(
+    q: NDArray[np.float64], r: NDArray[np.float64], window: int = 0,
+    qmax: Optional[float] = None,
+) -> NDArray[np.float64]:
+    """
+    Matrix W of the sine transform, G(r) = W @ (S(Q) - 1).
+
+        W_jk = 2/π · Q_k M(Q_k) sin(Q_k r_j) w_k
+
+    with w_k the Simpson weights of the Q grid (`_simpson_weights`, the rule
+    of `sineFT`) and M the window evaluated as in `sineFT`.
+
+    Parameters
+    ----------
+    q : array_like, shape (N_Q,)
+        Q grid (Å⁻¹), increasing.
+    r : array_like, shape (N_r,)
+        r grid (Å).
+    window : int, optional
+        0 (default): step, M = 1 for 0 <= Q < qmax; 1: standard Lorch,
+        M(0) = 1 (not normalised).
+    qmax : float, optional
+        Window limit (Å⁻¹); default the last Q. Points with Q >= qmax have
+        M = 0.
+
+    Returns
+    -------
+    ndarray, shape (N_r, N_Q)
+
+    Raises
+    ------
+    ValueError
+        If `window` is not 0 or 1.
+    """
+    if window not in (0, 1):
+        raise ValueError("ft_matrix: window must be 0 (no window) or 1 (Lorch).")
+    q = np.asarray(q, dtype=np.float64)
+    r = np.asarray(r, dtype=np.float64)
+    qmax = float(q[-1]) if qmax is None else float(qmax)
+    func = step if window == 0 else Lorch
+    win = np.array([float(func(float(x), qmax)) for x in q])
+    base = 2.0 / np.pi * q * win * _simpson_weights(q)
+    return np.sin(np.outer(r, q)) * base
+
+
+def _functions_from_G(r, G, jac_G, var_s, rho, crun):
+    """g, RDF, T, N and the errors of all the functions, from G and dG/dS."""
+    pos = r > 0
+    inv = np.zeros_like(r)
+    inv[pos] = 1.0 / (4.0 * np.pi * rho * r[pos])
+    g = np.where(pos, 1.0 + G * inv, 0.0)
+    jac_g = jac_G * inv[:, None]
+    rdf = r * G + 4.0 * np.pi * rho * r**2
+    tor = G + 4.0 * np.pi * rho * r
+    run = crun @ rdf
+
+    def err(jac):
+        return np.sqrt((jac**2) @ var_s)
+
+    dG = err(jac_G)
+    dn = err(crun @ (r[:, None] * jac_G))
+    return FourierSet(r, G, dG, g, err(jac_g), rdf, np.abs(r) * dG, tor, dG, run, dn,
+                      jac_G, jac_g)
+
+
+def fourier_with_errors(
+    q: NDArray[np.float64], s: NDArray[np.float64], ds: NDArray[np.float64],
+    r: NDArray[np.float64], rho: float, window: int = 0, qmax: Optional[float] = None,
+    crun: Optional[NDArray[np.float64]] = None,
+) -> FourierSet:
+    """
+    S(Q) -> G(r), g(r), RDF(r), T(r), N(r), each with its exact 1σ error.
+
+    The same transform and quadrature as `sineFT` (values agree to rounding,
+    ~1e-11), written as matrix products: G = W (S - 1) with W from
+    `ft_matrix`, g = 1 + G/(4πρr) (0 for r <= 0), RDF = 4πρr²g,
+    T = 4πρr g, N = C·RDF with C the running Simpson matrix
+    (`_running_simpson_matrix`). Every function is linear in S(Q), so for
+    uncorrelated errors σ_y,j² = Σ_k J_jk² σ_S,k² with its Jacobian J; σN
+    includes the correlations of neighbouring G(r) points through C. The
+    Jacobians are kept in the result for `back_fourier_iterations`.
+
+    Parameters
+    ----------
+    q, s, ds : array_like, shape (N_Q,)
+        Q (Å⁻¹, increasing), S(Q) and its 1σ error.
+    r : array_like, shape (N_r,)
+        r grid (Å).
+    rho : float
+        Atomic density (atoms/Å³).
+    window : int, optional
+        0 = none (default), 1 = Lorch (M(0) = 1).
+    qmax : float, optional
+        Truncation / Lorch width (Å⁻¹); default the last Q.
+    crun : ndarray, optional
+        Running Simpson matrix of `r` (to reuse it between calls).
+
+    Returns
+    -------
+    FourierSet
+    """
+    q, s, ds, r = (np.asarray(a, dtype=np.float64) for a in (q, s, ds, r))
+    W = ft_matrix(q, r, window, qmax)
+    crun = _running_simpson_matrix(r) if crun is None else crun
+    return _functions_from_G(r, W @ (s - 1.0), W, ds**2, rho, crun)
+
+
+def back_fourier_iterations(
+    q: NDArray[np.float64], ds: NDArray[np.float64], start: FourierSet, rho: float,
+    cut: list[float], niter: int, crun: Optional[NDArray[np.float64]] = None,
+) -> list[FourierSet]:
+    """
+    Back-Fourier iterations (`backFT` applied `niter` times) with exact errors.
+
+    Starting from g(r) of `start`, each iteration (as `backFT`):
+
+    1. g(r) = 0 in the regions given by `cut` (`_apply_cut`);
+    2. S(Q) = 1 + (4πρ/Q) ∫ r [g(r) - 1] sin(Qr) dr over the whole r grid
+       (S(0) = 1 + 4πρ ∫ r²[g - 1] dr for Q <= 0);
+    3. G(r) = 2/π ∫ Q [S(Q) - 1] sin(Qr) dQ over the whole Q grid, no window;
+       then g, RDF, T, N.
+
+    Every step is linear (affine) in the original S(Q); the cut is a
+    projection (the derivative is 0 at the points set to 0). The Jacobian
+    dg/dS is carried through the iterations, so the errors of the functions
+    and of the S(Q) of every iteration are exact for uncorrelated errors `ds`
+    of the original S(Q).
+
+    Parameters
+    ----------
+    q : array_like, shape (N_Q,)
+        Q grid of the original S(Q) (Å⁻¹).
+    ds : array_like, shape (N_Q,)
+        1σ errors of the original S(Q).
+    start : FourierSet
+        Result of `fourier_with_errors` (no window or Lorch) on the same q.
+    rho : float
+        Atomic density (atoms/Å³).
+    cut : list of float
+        As in `backFT`: ``[r0, a1, b1, ...]`` (odd length) or ``[-1]``.
+    niter : int
+        Number of iterations.
+    crun : ndarray, optional
+        Running Simpson matrix of ``start.r``.
+
+    Returns
+    -------
+    list of FourierSet
+        Iterations 1..niter, each with S and dS.
+    """
+    q = np.asarray(q, dtype=np.float64)
+    var_s = np.asarray(ds, dtype=np.float64) ** 2
+    r = start.r
+    crun = _running_simpson_matrix(r) if crun is None else crun
+    wr = _simpson_weights(r)
+    # S - 1 = A (g_cut - 1)
+    A = np.empty((len(q), len(r)))
+    pos_q = q > 0
+    A[pos_q] = (4.0 * np.pi * rho / q[pos_q])[:, None] * np.sin(np.outer(q[pos_q], r)) * (r * wr)
+    A[~pos_q] = 4.0 * np.pi * rho * r**2 * wr
+    # G = W0 (S - 1): whole Q grid, no window
+    W0 = np.sin(np.outer(r, q)) * (2.0 / np.pi * q * _simpson_weights(q))
+    out = []
+    g, jac_g = start.g, start.jac_g
+    for _ in range(int(niter)):
+        g_cut = _apply_cut(r, g, cut)
+        keep = (g_cut != 0.0) | (g == 0.0)
+        S = 1.0 + A @ (g_cut - 1.0)
+        jac_S = A @ (jac_g * keep[:, None])
+        fset = _functions_from_G(r, W0 @ (S - 1.0), W0 @ jac_S, var_s, rho, crun)
+        fset.S, fset.dS = S, np.sqrt((jac_S**2) @ var_s)
+        out.append(fset)
+        g, jac_g = fset.g, fset.jac_g
     return out
