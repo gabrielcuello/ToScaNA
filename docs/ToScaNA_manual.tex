@@ -162,13 +162,13 @@ find a directory named \code{toscana}. The simplest way is a symbolic link
 in a folder of your choice, added to the search path:
 \begin{lstlisting}
 mkdir -p ~/python_packages
-ln -s /Users/cuello/AI-lab/ToScaNA-pilot ~/python_packages/toscana
+ln -s /path/to/ToScaNA ~/python_packages/toscana   # your clone
 export PYTHONPATH=~/python_packages:$PYTHONPATH     # e.g. in ~/.zshrc
 \end{lstlisting}
 In a Jupyter notebook, instead of \code{PYTHONPATH}:
 \begin{lstlisting}[language=Python]
-import sys
-sys.path.insert(0, "/Users/cuello/python_packages")
+import os, sys
+sys.path.insert(0, os.path.expanduser("~/python_packages"))
 import toscana
 print(toscana.__version__)          # 0.1.0
 \end{lstlisting}
@@ -184,7 +184,7 @@ confused with other modules of the same name.}
 Run the test suite (Appendix~\ref{app:tests}); it needs no installation
 and takes about three minutes:
 \begin{lstlisting}
-python /Users/cuello/AI-lab/ToScaNA-pilot/tests/run_tests.py
+python /path/to/ToScaNA/tests/run_tests.py
 ...
 Ran 136 tests in 180 s
 OK

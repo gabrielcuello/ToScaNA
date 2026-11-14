@@ -19,3 +19,7 @@ docs/*.pdf
 *.npz
 *.npy
 .ipynb_checkpoints/
+
+# Private, not published
+docs/article/
+docs/ToScaNA_technical_audit.md

@@ -16,7 +16,7 @@ from helpers import in_tempdir, quiet
 import numpy as np
 
 ROOT = helpers._pkg.ROOT
-RAWDATA = os.environ.get("TOSCANA_RAWDATA", "/Users/cuello/AI-lab/rawdataD4")
+RAWDATA = os.environ.get("TOSCANA_RAWDATA", "")
 
 
 def _env() -> dict[str, str]:
