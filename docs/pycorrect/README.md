@@ -8,6 +8,10 @@ and normalises to vanadium. `pycorrect` reproduces it in plain Python (NumPy
 and SciPy), keeping the same command language so that old `.com` files still
 work.
 
+> **Licensing.** pycorrect is a translation of the original CORRECT program
+> and is not covered by the ToScaNA licence until its distribution terms are
+> clarified. See [`corrections/pycorrect/NOTICE.md`](../../corrections/pycorrect/NOTICE.md).
+
 > **Part of ToScaNA.** Since November 2026 pycorrect is the subpackage
 > `toscana.corrections.pycorrect` (code unchanged; its own `pyproject.toml`
 > was removed). Make ToScaNA importable (ToScaNA manual, *Installation*),
